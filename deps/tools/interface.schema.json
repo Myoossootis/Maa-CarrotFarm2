@@ -496,7 +496,7 @@
                         "MacOS",
                         "PlayCover",
                         "Gamepad",
-                        "Linux"
+                        "WlRoots"
                     ]
                 },
                 "display_short_side": {
@@ -696,29 +696,15 @@
                     },
                     "additionalProperties": false
                 },
-                "linux": {
+                "wlroots": {
                     "type": "object",
-                    "title": "Linux 控制器配置",
-                    "description": "Linux 控制器的具体配置",
+                    "title": "WlRoots 控制器配置",
+                    "description": "WlRoots 控制器的具体配置（仅 Linux）",
                     "properties": {
-                        "input": {
+                        "wlr_socket_path": {
                             "type": "string",
-                            "title": "输入控制方式",
-                            "description": "可选。Linux 控制器的输入控制方式，不提供则使用默认",
-                            "enum": [
-                                "Wlr",
-                                "UInput"
-                            ]
-                        },
-                        "screencap": {
-                            "type": "string",
-                            "title": "截图方式",
-                            "description": "可选。Linux 控制器的截图方式，不提供则使用默认",
-                            "enum": [
-                                "Wlr",
-                                "ExtImage",
-                                "PipeWire"
-                            ]
+                            "title": "Wayland Socket 路径",
+                            "description": "可选。Wayland Socket 路径，不提供则使用默认"
                         },
                         "use_win32_vk_code": {
                             "type": "boolean",
