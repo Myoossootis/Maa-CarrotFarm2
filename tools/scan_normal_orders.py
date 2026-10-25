@@ -349,23 +349,14 @@ def resolve_rare_abandon_dialog(controller: Win32Controller, confirm: bool) -> b
 
 
 def ensure_triple_checked(tasker: Tasker, controller: Win32Controller) -> None:
-    """Ensure the complete-3-times control is checked using pipeline then Python."""
+    """Toggle a recognized completion control once, then require readback."""
     frame = screenshot(controller)
+    if not completion_control_visible(frame):
+        raise RuntimeError('completion_control_unavailable: 未识别到完成次数控件，未发送切换输入')
     if completion_checked(frame)[0]:
         return
     if _enable_triple_by_template_click(controller, frame):
         return
-    # Calibration click point for the live banner control.
-    if not post_click_normalized(controller, 570, 1213).wait().succeeded:
-        raise RuntimeError("complete-3-times click failed")
-    time.sleep(0.5)
-    frame = screenshot(controller)
-    if completion_checked(frame)[0]:
-        return
-    if _enable_triple_by_template_click(controller, frame):
-        frame = screenshot(controller)
-        if completion_checked(frame)[0]:
-            return
     raise RuntimeError("complete-3-times was not verified")
 
 
@@ -394,20 +385,10 @@ def _enable_triple_by_template_click(controller: Win32Controller, frame) -> bool
     # The live control is a white tip bubble; the empty square sits near the
     # left edge of the matched banner, not at the geometric center.
     ox, oy = best_origin
-    candidates = [
-        (ox + 18, oy + best_template.shape[0] // 2),
-        (ox + 28, oy + best_template.shape[0] // 2),
-        (ox + 38, oy + best_template.shape[0] // 2),
-        (ox + 22, oy + best_template.shape[0] // 2 - 4),
-        (ox + 22, oy + best_template.shape[0] // 2 + 4),
-    ]
-    for x, y in candidates:
-        if not post_click_normalized(controller, x, y).wait().succeeded:
-            return False
-        time.sleep(0.35)
-        if completion_checked(screenshot(controller))[0]:
-            return True
-    return False
+    if not post_click_normalized(controller, ox + 18, oy + best_template.shape[0] // 2).wait().succeeded:
+        return False
+    time.sleep(0.35)
+    return completion_checked(screenshot(controller))[0]
 
 
 def prepare_completion_control(tasker, controller, products, requested_order=None):

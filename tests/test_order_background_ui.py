@@ -39,7 +39,7 @@ class OrderBackgroundTests(unittest.TestCase):
     def test_map_without_progress_is_not_accepted(self):
         tasker = MagicMock()
         tasker.post_task.return_value.wait.return_value.succeeded = False
-        with patch.object(orders, 'screenshot', return_value=object()), patch.object(orders, '_order_delivery_ocr', return_value=False):
+        with patch.object(orders, 'screenshot', return_value=object()), patch.object(orders, 'template_hit', return_value=None), patch.object(orders, '_order_delivery_ocr', return_value=False):
             self.assertFalse(orders._acceptance_confirmed(tasker, object()))
 
     def test_accelerate_copy_is_not_in_progress(self):
