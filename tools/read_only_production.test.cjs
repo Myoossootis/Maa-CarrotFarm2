@@ -21,6 +21,30 @@ test('maturity boundary and floor match client arithmetic',()=>{
   assert.equal(at(1201).status,'mature');assert.equal(at(1202).remainingSeconds,0);
 });
 
+test('percentage reduction preserves the client multiplication order before floor',()=>{
+  const crop=decodeSlot('103_1000_57_1',null,config,1129,0);
+  assert.equal(crop.effectiveDurationSeconds,130);
+  assert.equal(crop.remainingSeconds,1);
+  assert.equal(crop.canCollect,false);
+});
+
+test('verified package 90 decodes fields, orchards and feed-limited ranches',()=>{
+  const current={...config,version:'90'};
+  assert.equal(decodeSlot('103_1000_1_2',null,current,1100,0).status,'growing');
+  assert.equal(decodeSlot('301_1000_0_3',null,current,4600,0).status,'mature');
+  const animal=decodeSlot('205_1000_0_4',[1800],current,2801,0);
+  assert.equal(animal.status,'needs_feed');
+  assert.equal(animal.remainingSeconds,9000);
+  assert.equal(animal.matureAtUnix,null);
+  const data=productionOf(inventory(),current,1100);
+  assert.equal(data.complete,true);
+  assert.equal(data.semanticsPackageVersion,'90');
+  assert.equal(data.states.unknown,0);
+  const future=productionOf(inventory(),{...config,version:'91'},1100);
+  assert.equal(future.complete,false);
+  assert.equal(future.semanticsPackageVersion,null);
+});
+
 test('charged animal credits earlier segments and does not mistake feed durations for item counts',()=>{
   const animal=decodeSlot('205_1000_1_372',[1800,10800],config,9000,4);
   assert.equal(animal.entityItemId,1937);assert.equal(animal.productItemId,172);

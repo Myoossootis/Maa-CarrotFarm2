@@ -1,7 +1,8 @@
 'use strict';
 
-// Static rules verified against package 87: CROP_IDX and ViewFarmModel.
+// CROP_IDX and ViewFarmModel verified byte-for-byte in packages 87 and 90.
 // This module consumes decoded records only; it has no process, UI or network API.
+const VERIFIED_PACKAGES=new Set(['87','90']);
 const BUILDINGS=new Map([[12,'field'],[284,'field'],[285,'field'],[17,'ranch'],[723,'ranch'],[28,'orchard'],[286,'orchard']]);
 const LABELS={empty:'空位',growing:'生长中',mature:'已成熟',needs_feed:'待喂食',unknown:'未判定'};
 const paramsOf=value=>Object.fromEntries(String(value||'').split(';').filter(Boolean).map(v=>{const i=v.indexOf(',');return [v.slice(0,i),v.slice(i+1)];}));
@@ -32,8 +33,8 @@ function decodeSlot(raw,chargeCds,config,now,index){
   slot.entityItemId=Number(itemParams.ref_id)||output.item_id;slot.entityName=config.name(slot.entityItemId);
   slot.isMutation=Number(itemParams.mutation_ref_id)>0;
   slot.baseDurationSeconds=output.cd;
-  slot.effectiveDurationSeconds=output.cd-Math.floor(output.cd*slot.cdRatePercent/100);
-  if(String(config.version)!=='87') return unknown('客户端版本与已核对的87版规则不同，需重新核对');
+  slot.effectiveDurationSeconds=output.cd-Math.floor(output.cd*(slot.cdRatePercent/100));
+  if(!VERIFIED_PACKAGES.has(String(config.version))) return unknown('客户端版本未核对；当前已核对87、90版规则');
   if(slot.cdRatePercent>100) return unknown('减时百分比超出已核对范围');
   if(chargeCds!==null&&(!Array.isArray(chargeCds)||!chargeCds.length||!valid(chargeCds)))
     return unknown('无效的供料计时数组');
@@ -141,7 +142,7 @@ function productionOf(inventory,config,now,common={}){
     }
   }
   const all=buildings.flatMap(b=>b.slots),states=Object.fromEntries(Object.keys(LABELS).map(k=>[k,all.filter(s=>s.status===k).length]));
-  return {schemaVersion:1,semanticsPackageVersion:'87',asOfUnix:now,
+  return {schemaVersion:1,semanticsPackageVersion:VERIFIED_PACKAGES.has(String(config.version))?String(config.version):null,asOfUnix:now,
     manualControl:{totalControlEnabled:Number(common['87']||0)===1},
     plantingCatalog:plantingCatalogOf(inventory,config),
     clock:{source:'host_utc',serverClockVerified:false,note:'客户端使用服务器校时后的时钟；本读取器未读取该内存时钟，临界状态可能有秒级或时钟偏差'},
