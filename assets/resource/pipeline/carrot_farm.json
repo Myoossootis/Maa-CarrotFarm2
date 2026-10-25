@@ -1548,5 +1548,66 @@
             "poll_seconds": 60
         },
         "timeout": 2147483647
+    },
+    "RunNormalOrderLoop": {
+        "action": "Custom",
+        "custom_action": "RunDailyOrders",
+        "custom_action_param": {
+            "order_type": "normal",
+            "poll_seconds": 20,
+            "timeout_seconds": 7200,
+            "continuous": true,
+            "max_orders": 0
+        },
+        "attach": {
+            "ui_apply": true,
+            "first_order_allow_crop_001": false,
+            "first_order_allow_crop_002": false,
+            "first_order_allow_crop_003": false,
+            "first_order_allow_crop_004": false,
+            "first_order_allow_crop_005": false,
+            "first_order_allow_crop_006": false,
+            "first_order_allow_crop_007": false,
+            "first_order_allow_crop_008": false,
+            "first_order_allow_crop_009": false,
+            "first_order_allow_crop_010": false,
+            "first_order_allow_crop_011": false,
+            "first_order_allow_crop_012": false,
+            "first_order_allow_crop_013": false,
+            "first_order_allow_crop_014": false,
+            "first_order_allow_crop_015": false,
+            "first_order_allow_crop_016": false,
+            "first_order_allow_crop_017": false,
+            "first_order_allow_crop_018": false,
+            "first_order_allow_crop_019": false,
+            "first_order_allow_crop_020": false,
+            "first_order_allow_crop_021": false,
+            "first_order_allow_crop_022": false,
+            "first_order_allow_crop_023": false,
+            "first_order_allow_crop_024": false
+        },
+        "timeout": 2147483647,
+        "focus": {
+            "Node.Action.Starting": {
+                "content": "开始普通订单3倍持续循环；优先恢复已保存生产，缺料使用空闲员工补产。点击停止保留进度。",
+                "display": [
+                    "log",
+                    "toast"
+                ]
+            },
+            "Node.Action.Succeeded": {
+                "content": "普通3倍循环已结束，完成单数与等待原因见日志。",
+                "display": [
+                    "log"
+                ]
+            },
+            "Node.Action.Failed": {
+                "content": "普通订单日常失败或已取消。请看日志中的[错误]/[跳过]行；已保存计划不会自动清空。",
+                "display": [
+                    "log",
+                    "toast"
+                ]
+            }
+        }
     }
 }
