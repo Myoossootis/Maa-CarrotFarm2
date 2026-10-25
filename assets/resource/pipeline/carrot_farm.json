@@ -1385,7 +1385,10 @@
     },
     "ClickPartyOrderTab": {
         "recognition": "TemplateMatch",
-        "template": "navigation/party_order_tab.png",
+        "template": [
+            "navigation/party_order_tab.png",
+            "navigation/party_order_tab_live.png"
+        ],
         "roi": [
             40,
             190,
