@@ -20,7 +20,7 @@ except ImportError:
     import decoded_runtime as decoded
 
 from configure_field_employee import locate_nav
-from order_template_click import open_normal_orders, click_template_node
+from order_template_click import open_normal_orders, click_template_node, template_hit
 from scan_normal_orders import (
     ROOT,
     RESOURCE,
@@ -124,7 +124,7 @@ def _bright_accept_box(tasker: Tasker, frame):
 def _acceptance_confirmed(tasker: Tasker, controller: Win32Controller) -> bool:
     """Require explicit in-progress evidence, not a closed board/missing button."""
     frame = screenshot(controller)
-    if tasker.post_task("VerifyNormalOrderInProgress").wait().succeeded:
+    if template_hit(frame, 'VerifyNormalOrderInProgress') is not None:
         return True
     if _order_delivery_ocr(tasker, frame):
         return True
@@ -305,8 +305,7 @@ def main() -> int:
 
         # A previously accepted order can still be running when a new task
         # starts. Detect it before touching the triple control or any card.
-        existing_progress = tasker.post_task("VerifyNormalOrderInProgress").wait()
-        if existing_progress.succeeded:
+        if template_hit(screenshot(controller), 'VerifyNormalOrderInProgress') is not None:
             in_progress_waited = True
             time.sleep(IN_PROGRESS_WAIT_SECONDS)
             # Close board so the cycle can reopen for reward/next scan.

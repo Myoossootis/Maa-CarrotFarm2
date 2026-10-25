@@ -2,7 +2,7 @@
 
 基于 [MaaFramework](https://github.com/MaaXYZ/MaaFramework) 的 **Win32 后台**自动化：FramePool 截图 + PostMessage 点击，不抢前台鼠标。
 
-开发版本 **0.7.2**：增加订单板加载／持续空板／未知状态前检验，避免使用空板上的旧缓存选单和排产；两类页签只读验证通过，正式入口的裁剪偏移保护仍待修复。开发约定见 [CONTRIBUTING.md](CONTRIBUTING.md)，交付写入 [版本记录](CHANGELOG.md)，后续按 [交付路线](docs/DELIVERY_ROADMAP.md) 推进。
+开发版本 **0.7.3**：修复正式订单入口对已验证裁剪截图的阻塞，进行中检查使用统一归一化图像；灰色聚会页签模板仍待修复。开发约定见 [CONTRIBUTING.md](CONTRIBUTING.md)，交付写入 [版本记录](CHANGELOG.md)，后续按 [交付路线](docs/DELIVERY_ROADMAP.md) 推进。
 
 > **方案决定（2026-10-25）**：Cocos 内部调用、Frida 注入及 WMPF 调试桥实验已封存，**不纳入使用脚本方案**。现有脚本维持原状；详见[封存说明](docs/ARCHIVED_COCOS_RESEARCH_2026-10-25.md)。
 

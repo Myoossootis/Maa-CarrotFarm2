@@ -41,6 +41,7 @@ class SingleOrderFlowTests(unittest.TestCase):
             stack.enter_context(patch.object(orders, 'build_runtime_resource', return_value=Path(directory)))
             stack.enter_context(patch.object(orders, 'load_products', return_value=[]))
             stack.enter_context(patch.object(orders, 'open_normal_orders', return_value=True))
+            stack.enter_context(patch.object(orders, 'template_hit', return_value=None))
             stack.enter_context(patch.object(orders, 'claim_completed_reward', return_value=False))
             stack.enter_context(patch.object(orders, 'prepare_completion_control', return_value=object()))
             stack.enter_context(patch.object(orders, 'recognize_pins', return_value=[(100 * i, 418) for i in range(1, 10)]))

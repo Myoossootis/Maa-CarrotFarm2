@@ -48,24 +48,23 @@ def install_safe_inputs():
     Tasker.set_stdout_level(2)
     # Single FG-safe gate for all Win32Controller input methods.
     frames.install_foreground_safe_inputs()
-    original_task = Tasker.post_task
-
-    def recognition_only(self, entry, *args, **kwargs):
+    def block_native_task(self, entry, *args, **kwargs):
         check_cancelled()
-        if entry != 'VerifyNormalOrderInProgress':
-            raise RuntimeError(f'Maa UI stopped: unvalidated native task {entry}')
-        node = self.resource.get_node_data(entry)
-        if (args or kwargs or not node or node.get('action', {}).get('type') != 'DoNothing'
-                or node.get('next') or node.get('on_error')):
-            raise RuntimeError('Maa UI stopped: progress check must remain recognition-only')
-        return original_task(self, entry, *args, **kwargs)
+        raise RuntimeError(f'Maa UI stopped: native task {entry}; use normalized-frame recognition')
 
-    Tasker.post_task = recognition_only
+    Tasker.post_task = block_native_task
 
     def source_bundle(offset):
         check_cancelled()
-        if offset != 0:
-            raise RuntimeError('Maa UI stopped: nonzero screenshot offset is not validated')
+        width, height = frames._LAST_FRAME_WH
+        valid = (type(offset) is int and 0 <= offset <= frames.MAX_TOP_LETTERBOX
+                 and offset == frames.get_top_offset() and width == frames.EXPECTED_WIDTH
+                 and (abs(height - frames.EXPECTED_HEIGHT) <= 16 if offset == 0
+                      else height - offset == frames.EXPECTED_HEIGHT))
+        if not valid:
+            raise RuntimeError('Maa UI stopped: unvalidated screenshot dimensions or crop')
+        # All worker recognition now receives normalized images explicitly;
+        # native tasks that capture raw frames are blocked above.
         return frames.SOURCE_RESOURCE
 
     frames.build_runtime_resource = source_bundle
