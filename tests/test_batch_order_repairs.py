@@ -75,6 +75,7 @@ class BatchFailureTests(unittest.TestCase):
             stack.enter_context(patch.object(batch.decoded, 'enabled', return_value=True))
             stack.enter_context(patch.object(batch.decoded, 'assert_order_unchanged', return_value=items))
             stack.enter_context(patch.object(batch, 'open_orders', return_value=True))
+            stack.enter_context(patch.object(batch, 'probe_availability', return_value={'status': 'available'}))
             stack.enter_context(patch.object(batch, '_select_recipe', return_value=(items, 7, (155, 782), 6)))
             stack.enter_context(patch.object(batch, '_enrich', return_value={}))
             stack.enter_context(patch.object(batch, 'screenshot', return_value=object()))
@@ -149,6 +150,7 @@ class BatchFailureTests(unittest.TestCase):
             for name in ("load_products", "find_window", "install_foreground_safe_inputs", "measure_controller_offset", "build_runtime_resource", "dismiss_offline_income", "leave_employee_ui_if_visible", "_ensure_batch_checked"):
                 stack.enter_context(patch.object(batch, name))
             stack.enter_context(patch.object(batch, "open_orders", return_value=True))
+            stack.enter_context(patch.object(batch, 'probe_availability', return_value={'status': 'available'}))
             stack.enter_context(patch.object(batch, "_select_recipe", side_effect=RuntimeError("order_recipe_unreadable")))
             stack.enter_context(patch.object(batch, "screenshot", side_effect=RuntimeError("no frame")))
             stack.enter_context(patch.object(batch, "RESULT", folder / "result.json"))

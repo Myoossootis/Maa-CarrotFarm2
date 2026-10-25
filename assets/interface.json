@@ -5,7 +5,7 @@
     "license": "MIT",
     "welcome": "默认运行「聚会与外卖订单（自动调度）」：先做可用批次，两类都冷却时才等待，各日12次。也可单独勾选聚会或外卖，冷却时让出队列。普通订单没有每日上限，当前单独入口每次处理一单，长期循环待后续开发。游戏勿最小化。监控预览：左上角。",
     "github": "https://github.com/Myoossootis/Maa-CarrotFarm2",
-    "version": "0.7.1",
+    "version": "0.7.2",
     "agent": {
         "child_exec": "python",
         "child_args": [

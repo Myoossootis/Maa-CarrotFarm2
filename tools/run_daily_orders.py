@@ -215,6 +215,7 @@ def run_daily(
     done = 0
     status = "dry_run" if not apply else "no_actionable_orders"
     quota = None
+    board_availability = None
     try:
         while True:
             check_cancelled()
@@ -249,6 +250,12 @@ def run_daily(
                 status = "no_actionable_orders"
                 _log(f"[跳过] 类型={label} 无可执行订单；详情={short_cycle.TMP / 'latest_summary.json'}")
                 break
+            last_scan = ((summary.get('rounds') or [{}])[-1].get('scan') or {})
+            if summary.get('status') == 'waiting' and last_scan.get('status') in short_cycle.BOARD_WAITING_STATES:
+                status = last_scan['status']
+                board_availability = last_scan.get('board_availability')
+                _log(f'[等待] 类型={label} status={status}；UI未提供可信恢复时间，本次停止扫单。')
+                break
             if not _accepted(summary):
                 raise RuntimeError(f"短循环未确认交单 status={summary.get('status')}")
             last = summary['rounds'][-1]
@@ -280,6 +287,8 @@ def run_daily(
         "quota": quota, "next_available": (quota or {}).get("next_available"),
         "finished_at_utc": datetime.now(timezone.utc).isoformat(),
     }
+    if status in short_cycle.BOARD_WAITING_STATES:
+        final.update(board_availability=board_availability, next_available=None)
     write_json(TMP / f"latest_{order_type}.json", final)
     _log(f"[结束] 类型={label} status={status} 本跑={done} next_available={final['next_available']}")
     return 0

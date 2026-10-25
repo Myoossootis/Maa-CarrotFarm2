@@ -23,6 +23,7 @@ from dismiss_offline_income import dismiss_offline_income
 from ensure_ranch_feed import recognized_text
 from maa_frame_normalize import post_click_normalized
 from order_template_click import open_orders, template_hit
+from order_board_availability import probe_availability, WAITING_STATES
 from refresh_order import card_center, card_pending, card_selected, refresh_order, LABELS
 from scan_normal_orders import load_products, match_products, screenshot
 from task_control import TaskCancelled, check_cancelled
@@ -70,6 +71,16 @@ def enforce_first_order(controller, tasker, products, kind, evidence, progress, 
     progress.update(stage='open_board', refresh_count=0, history=[])
     if not open_orders(controller, kind):
         raise RuntimeError('first_order_board_unavailable: 无法打开订单页签')
+    if kind in {'party', 'takeout'}:
+        progress['stage'] = 'board_availability'
+        frame = screenshot(controller)
+        cv2.imwrite(str(evidence / 'availability.png'), frame)
+        availability = probe_availability(tasker, controller, kind)
+        progress['board_availability'] = availability
+        if availability['status'] == 'board_unknown':
+            raise RuntimeError(f'board_unknown: {availability}')
+        if availability['status'] in WAITING_STATES:
+            return dict(status=availability['status'], next_available=None)
     if not post_click_normalized(controller, *card_center(1)).wait().succeeded:
         raise RuntimeError('first_order_select_failed')
     time.sleep(.4)

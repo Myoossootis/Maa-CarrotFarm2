@@ -34,6 +34,16 @@ class ShortCycleOutcomeTests(unittest.TestCase):
         self.assertEqual(summary['status'], 'waiting')
         self.assertEqual(code, 2)
 
+    def test_batch_board_wait_stops_without_production_or_quota_receipt(self):
+        for status in ('board_unavailable', 'board_loading'):
+            with patch.object(m, 'record_completion') as record:
+                code, summary = self.run_case(dict(status=status, board_availability={'next_available': None}))
+            self.assertEqual(code, 0)
+            self.assertEqual(summary['status'], 'waiting')
+            self.assertEqual(summary['rounds'][-1]['scan']['status'], status)
+            self.assertEqual(self.last_scripts, [])
+            record.assert_not_called()
+
     def test_no_actionable_order_is_distinct_from_completion(self):
         code, summary = self.run_case({'status': 'completed', 'no_acceptable_orders': True})
         self.assertEqual(summary['status'], 'no_actionable_orders')

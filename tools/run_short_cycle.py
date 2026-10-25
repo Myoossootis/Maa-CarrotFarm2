@@ -40,11 +40,13 @@ try:
     from .production_targets import shortage_focus_was_submitted, target_shortage_names
     from .runtime_state import write_json
     from .task_control import TaskCancelled, check_cancelled
+    from .order_board_availability import WAITING_STATES as BOARD_WAITING_STATES
 except ImportError:
     from order_board_helpers import print_startup_checklist
     from production_targets import shortage_focus_was_submitted, target_shortage_names
     from runtime_state import write_json
     from task_control import TaskCancelled, check_cancelled
+    from order_board_availability import WAITING_STATES as BOARD_WAITING_STATES
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -332,7 +334,7 @@ def scan_for_target(max_passes: int, order_type: str = "normal") -> dict:
             return last
         if last.get("returned_to_farm") and last.get("no_acceptable_orders") and not last.get("target_order"):
             return last
-        if last.get("status") in {"existing_order_in_progress", "sleep_confirmation_pending"}:
+        if last.get("status") in {"existing_order_in_progress", "sleep_confirmation_pending"} | BOARD_WAITING_STATES:
             return last
     return last
 
@@ -506,6 +508,7 @@ def main(*, startup_confirmed=False) -> int:
                 "status": completion.get("status"),
                 "submitted_count": completion.get("submitted_count"),
                 "target_order": completion.get("target_order"),
+                "board_availability": completion.get("board_availability"),
             }
 
             target = completion.get("target_order")
@@ -513,7 +516,7 @@ def main(*, startup_confirmed=False) -> int:
                 target = completion['submitted'][0]
             if not target:
                 round_record["status"] = (
-                    "waiting" if completion.get("status") in {"existing_order_in_progress", "sleep_confirmation_pending"}
+                    "waiting" if completion.get("status") in {"existing_order_in_progress", "sleep_confirmation_pending"} | BOARD_WAITING_STATES
                     else "no_actionable_orders"
                 )
                 round_record["detail"] = completion.get("status")
@@ -672,7 +675,9 @@ def main(*, startup_confirmed=False) -> int:
         write_json(TMP / "latest_summary.json", summary)
         write_json(LEGACY_TMP / "latest_summary.json", summary)
         print(json.dumps(summary, ensure_ascii=False, indent=2), flush=True)
-        return 0 if summary["status"] in {"complete", "no_actionable_orders"} else 2
+        board_waiting = (summary['status'] == 'waiting' and summary['rounds']
+                         and summary['rounds'][-1]['scan']['status'] in BOARD_WAITING_STATES)
+        return 0 if summary["status"] in {"complete", "no_actionable_orders"} or board_waiting else 2
     except TaskCancelled:
         summary.update(status='cancelled', finished_at_utc=datetime.now(timezone.utc).isoformat())
         write_json(TMP / 'latest_summary.json', summary)

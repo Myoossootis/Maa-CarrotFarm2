@@ -83,6 +83,7 @@ class FirstSlotFlowTests(unittest.TestCase):
         self.progress = {}
         self.frame = np.zeros((1358, 720, 3), dtype=np.uint8)
         self.stack.enter_context(patch.object(policy, 'open_orders', return_value=True))
+        self.stack.enter_context(patch.object(policy, 'probe_availability', return_value={'status': 'available'}))
         self.stack.enter_context(patch.object(policy, 'screenshot', return_value=self.frame))
         self.click = self.stack.enter_context(patch.object(policy, 'post_click_normalized'))
         self.click.return_value.wait.return_value.succeeded = True

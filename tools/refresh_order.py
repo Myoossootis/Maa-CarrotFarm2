@@ -9,11 +9,18 @@ import traceback
 
 import cv2
 
-from atom_cli_common import connect_controller, release_controller
-from maa_frame_normalize import post_click_normalized
-from order_template_click import click_template_node, open_orders, template_hit
-from scan_normal_orders import screenshot, resolve_rare_abandon_dialog
-from task_control import TaskCancelled, check_cancelled
+try:
+    from .atom_cli_common import connect_controller, release_controller
+    from .maa_frame_normalize import post_click_normalized
+    from .order_template_click import click_template_node, open_orders, template_hit
+    from .scan_normal_orders import screenshot, resolve_rare_abandon_dialog
+    from .task_control import TaskCancelled, check_cancelled
+except ImportError:
+    from atom_cli_common import connect_controller, release_controller
+    from maa_frame_normalize import post_click_normalized
+    from order_template_click import click_template_node, open_orders, template_hit
+    from scan_normal_orders import screenshot, resolve_rare_abandon_dialog
+    from task_control import TaskCancelled, check_cancelled
 
 
 ROOT = Path(__file__).resolve().parents[1]
