@@ -55,6 +55,7 @@ from allocate_employee_work import CAPABILITIES, allocate
 from configure_field_employee import leave_employee_ui_if_visible
 from dismiss_offline_income import dismiss_offline_income
 from ensure_ranch_feed import recognized_text
+from refresh_order import card_selected
 try:
     from . import normal_order_delivery as delivery
 except ImportError:
@@ -95,7 +96,8 @@ def finish_normal_delivery(tasker, controller, receipt, timeout=300):
             if not post_click_normalized(controller, *pin).wait().succeeded:
                 raise decoded.DecodeError('Normal reward card not selected')
             time.sleep(.4)
-            if _claim_reward_button(screenshot(controller)) is None:
+            reward_frame = screenshot(controller)
+            if not card_selected(reward_frame, number) or _claim_reward_button(reward_frame) is None:
                 raise decoded.DecodeError('Normal reward button not confirmed; no claim sent')
             receipt = delivery.reserve_reward(receipt, decoded.snapshot())
             if not claim_completed_reward(controller, tasker):

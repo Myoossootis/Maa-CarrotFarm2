@@ -2,7 +2,7 @@
 
 基于 [MaaFramework](https://github.com/MaaXYZ/MaaFramework) 的 **Win32 后台**自动化：FramePool 截图 + PostMessage 点击，不抢前台鼠标。
 
-开发版本 **0.7.8**：返回农场已实机验证，普通单增加3倍次数核验与接取／领奖持久化保护；优先推进持续循环，真实业务闭环尚未验收。开发约定见 [CONTRIBUTING.md](CONTRIBUTING.md)，交付写入 [版本记录](CHANGELOG.md)，后续按 [交付路线](docs/DELIVERY_ROADMAP.md) 推进。
+开发版本 **0.8.0**：新增显式普通订单3倍持续循环CLI，库存足够才交单，缺料保存目标等待员工排产对账。原日常UI仍单轮；真实连续两轮及缺料闭环尚未验收。用法及证据见[普通单优先计划](docs/NORMAL_ORDER_PRIORITY_2026-10-25.md)，开发约定见[CONTRIBUTING.md](CONTRIBUTING.md)，交付写入[版本记录](CHANGELOG.md)。
 
 > **方案决定（2026-10-25）**：Cocos 内部调用、Frida 注入及 WMPF 调试桥实验已封存，**不纳入使用脚本方案**。现有脚本维持原状；详见[封存说明](docs/ARCHIVED_COCOS_RESEARCH_2026-10-25.md)。
 

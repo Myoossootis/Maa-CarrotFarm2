@@ -38,3 +38,28 @@
 回执仅本地`.tmp/normal_order_delivery/active.json`与receipts/。恢复时不能删除active文件绕过阻塞；运行证据仍在`.tmp/farm_return_2026-10-25/`。
 
 0.7.8回归：Python548项，545通过、3个可选旧截图跳过；新增8项模拟覆盖持久化、精确扣料补证、未知接受／领奖不重试、UID／成本／库存变化和次数读文。Schema、版本、diff检查通过；Node25项在0.7.7通过，本版本未修改Node。实机只验次数和准备，没有把模拟中断恢复算实机成功。
+
+## 0.8.0 显式普通3倍循环首版
+
+新增run_normal_order_loop.py，先调用正式prepare-only，库存足够再提交同配方；每单要求accepted＋领奖＋归档completed回执且3倍，再累计一单／3次。操作ID重复、领奖未确认、错误倍数等立即停止。每次运行使用唯一目录，保留逐单目标和summary。没有次数配额限制；0上限表示持续到取消、缺料或明确阻塞，不表示忽略异常。
+
+首版在缺料时保存目标并返回waiting_for_materials，下一阶段为employee_plan_reconciliation；尚不自动接入缺少持久化恢复的员工排产／收取路径。原日常UI不改变默认行为；这是显式CLI试验入口，尚未作为已验收的无人值守主入口。
+
+```powershell
+# 预览，无游戏输入
+.venv/Scripts/python.exe tools/ui_worker.py run_normal_order_loop.py
+# 有限两单验证（需真实库存条件）
+.venv/Scripts/python.exe tools/ui_worker.py run_normal_order_loop.py --apply --max-orders 2
+# 持续至取消或阻塞：仅在有限实机验收后采用
+.venv/Scripts/python.exe tools/ui_worker.py run_normal_order_loop.py --apply
+```
+
+循环持cycle_lock。普通单worker独立启动也持锁，子进程须在Windows进程祖先链中确认持锁协调器才继承归属，不能仅凭环境变量或直接父PID判断；venv启动器可能多出一层进程。其他业务入口的全面互斥审计仍属N04。console运行可在本次`.tmp/normal_order_loop/<run_id>/`创建cancel文件取消，Maa子进程继续使用已有取消文件。取消不删除未决接受／领奖意图。
+
+后续先实机验证缺料等待路径，待库存足够验证两单完整交单／领奖；再补员工排产保存前意图和正式监控收取恢复，接入缺料闭环。不能把两轮模拟计数当作连续业务实机通过。
+
+本轮已通过真实缺料路径：--apply --max-orders 2读取到甘蔗缺41，保存目标并waiting_for_materials，计数0，返回农场专用特征确认；库存和员工／计划不变，没有创建active接取意图。首次因venv父进程层级导致重复加锁，在输入前停止；修复祖先归属后复测通过，证据分别保留于`.tmp/farm_return_2026-10-25/loop/`和`loop_verified/`。新锁回归只用独立临时目录，不操作真实游戏锁。
+
+最终离线Python554项，551通过、3个可选历史截图跳过；Node25项、Schema、maa-tools、版本和diff检查通过。两单6次循环仅模拟通过，当前缺料等待属于真实验证，二者分别报告。
+
+结束前重新只读对账：90版生产完整；农田1／2和牧场1当时空闲，农田3仍有员工计划，两个果园物理在产，牧场2可领。旧饲料、手动播种与历史未绑定排产记录仍保留。未据此执行任何排产或收取；下一步针对甘蔗41缺口，先补保存前持久化意图和旧记录归属核对，再在当时仍空闲且能力验证通过的田里做一次性补料，不能直接重放旧计划。该快照是历史证据，续做必须重新读取；本地next_snapshot.json及next_reconciliation.json保留。

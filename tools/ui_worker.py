@@ -12,10 +12,47 @@ from pathlib import Path
 import runpy
 import sys
 
-from task_control import TaskCancelled, check_cancelled, install_interruptible_waits
+try:
+    from .task_control import TaskCancelled, check_cancelled, install_interruptible_waits
+except ImportError:
+    from task_control import TaskCancelled, check_cancelled, install_interruptible_waits
 
 
 ROOT = Path(__file__).resolve().parents[1]
+
+
+def inherits_cycle_lock():
+    owner = os.environ.get('CARROT_UI_CYCLE_OWNER')
+    if not owner or not owner.isdecimal():
+        return False
+    # Windows venv launchers can add a process between coordinator and worker.
+    # Read process ancestry only; do not interpret game state or touch memory.
+    try:
+        from .read_only_memory import PROCESSENTRY32, k
+    except ImportError:
+        from read_only_memory import PROCESSENTRY32, k
+    import ctypes
+    handle = k.CreateToolhelp32Snapshot(2, 0)
+    if not handle or handle == ctypes.c_void_p(-1).value:
+        raise RuntimeError('Cannot verify UI lock owner ancestry')
+    try:
+        entry = PROCESSENTRY32()
+        entry.dwSize = ctypes.sizeof(entry)
+        parents = {}
+        ok = k.Process32FirstW(handle, ctypes.byref(entry))
+        while ok:
+            parents[int(entry.th32ProcessID)] = int(entry.th32ParentProcessID)
+            ok = k.Process32NextW(handle, ctypes.byref(entry))
+    finally:
+        k.CloseHandle(handle)
+    ancestor = parents.get(os.getpid())
+    visited = set()
+    while ancestor and ancestor not in visited:
+        if ancestor == int(owner):
+            return True
+        visited.add(ancestor)
+        ancestor = parents.get(ancestor)
+    return False
 
 
 @contextmanager
@@ -33,9 +70,15 @@ def cycle_lock():
             msvcrt.locking(stream.fileno(), msvcrt.LK_NBLCK, 1)
         except OSError as error:
             raise RuntimeError('another UI cycle is already running') from error
+        previous_owner = os.environ.get('CARROT_UI_CYCLE_OWNER')
+        os.environ['CARROT_UI_CYCLE_OWNER'] = str(os.getpid())
         try:
             yield
         finally:
+            if previous_owner is None:
+                os.environ.pop('CARROT_UI_CYCLE_OWNER', None)
+            else:
+                os.environ['CARROT_UI_CYCLE_OWNER'] = previous_owner
             stream.seek(0)
             msvcrt.locking(stream.fileno(), msvcrt.LK_UNLCK, 1)
 
@@ -72,8 +115,11 @@ def install_safe_inputs():
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument('script', choices=['reconcile_production.py', 'run_manual_planting.py', 'run_feed_production.py', 'cycle', 'ensure_ranch_feed.py', 'check_first_orders.py', 'refresh_order.py', 'complete_normal_orders.py', 'complete_batch_orders.py', 'run_employee_order_plan.py', 'monitor_employee_products.py', 'dismiss_offline_income.py', 'enter_restaurant.py', 'enter_farm.py', 'open_phone.py', 'open_employee_config.py', 'select_farm_employment.py', 'open_field_detail.py', 'return_employee_list.py', 'locate_field_2.py', 'open_work_plan.py', 'close_work_plan.py', 'verify_slot_work_plan.py', 'run_daily_orders.py'])
+    parser.add_argument('script', choices=['reconcile_production.py', 'run_manual_planting.py', 'run_feed_production.py', 'cycle', 'ensure_ranch_feed.py', 'check_first_orders.py', 'refresh_order.py', 'complete_normal_orders.py', 'complete_batch_orders.py', 'run_employee_order_plan.py', 'monitor_employee_products.py', 'dismiss_offline_income.py', 'enter_restaurant.py', 'enter_farm.py', 'open_phone.py', 'open_employee_config.py', 'select_farm_employment.py', 'open_field_detail.py', 'return_employee_list.py', 'locate_field_2.py', 'open_work_plan.py', 'close_work_plan.py', 'verify_slot_work_plan.py', 'run_daily_orders.py', 'run_normal_order_loop.py'])
     args, forwarded = parser.parse_known_args()
+    inherited_normal_lock = args.script == 'complete_normal_orders.py' and inherits_cycle_lock()
+    if inherited_normal_lock:
+        os.environ.setdefault('CARROT_UI_PARENT_PID', os.environ['CARROT_UI_CYCLE_OWNER'])
     if importlib.metadata.version('MaaFw') != '5.13.1':
         raise RuntimeError('Maa UI worker requires MaaFw 5.13.1; use the project .venv')
     os.chdir(ROOT)
@@ -107,6 +153,10 @@ def main():
         with cycle_lock():
             return refresh_order.main()
     sys.argv = [args.script, *forwarded]
+    if args.script == 'complete_normal_orders.py' and not inherited_normal_lock:
+        with cycle_lock():
+            runpy.run_path(str(ROOT / 'tools' / args.script), run_name='__main__')
+        return 0
     runpy.run_path(str(ROOT / 'tools' / args.script), run_name='__main__')
     return 0
 

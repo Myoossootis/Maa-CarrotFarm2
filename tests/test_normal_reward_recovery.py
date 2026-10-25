@@ -17,6 +17,7 @@ class RewardRecoveryTests(unittest.TestCase):
                 patch.object(normal.delivery,'reserve_reward',side_effect=lambda *a:events.append('intent') or {'status':'reward_intent'}), \
                 patch.object(normal.delivery,'complete',side_effect=lambda *a:events.append('complete') or {'status':'completed'}), \
                 patch.object(normal,'open_normal_orders',return_value=True), \
+                patch.object(normal,'card_selected',return_value=True), \
                 patch.object(normal,'post_click_normalized') as select, \
                 patch.object(normal,'screenshot'),patch.object(normal,'_claim_reward_button',return_value=(500,1100)), \
                 patch.object(normal,'claim_completed_reward',side_effect=lambda *a:events.append('claim') or True), \
@@ -27,14 +28,15 @@ class RewardRecoveryTests(unittest.TestCase):
         accept.assert_not_called();returned.assert_called_once();select.assert_called_once()
 
     def test_missing_claim_control_or_changed_uid_cannot_reserve_or_claim(self):
-        for uid in (88,99):
+        for uid, selected, button in ((88,True,None),(99,True,None),(88,False,(500,1100))):
             data={'orders':[{'uid':uid,'category':'normal','slot':1,'statusCode':3}]}
             with patch.object(normal.decoded,'snapshot',return_value=data), \
                     patch.object(normal.delivery,'recover',return_value={'uid':88,'status':'accepted'}), \
                     patch.object(normal.delivery,'reserve_reward') as reserve, \
                     patch.object(normal,'open_normal_orders',return_value=True), \
+                    patch.object(normal,'card_selected',return_value=selected), \
                     patch.object(normal,'post_click_normalized'),patch.object(normal,'screenshot'), \
-                    patch.object(normal,'_claim_reward_button',return_value=None), \
+                    patch.object(normal,'_claim_reward_button',return_value=button), \
                     patch.object(normal,'claim_completed_reward') as claim,patch.object(normal.time,'sleep'):
                 with self.assertRaises(normal.decoded.DecodeError):
                     normal.finish_normal_delivery(None,None,{'uid':88,'status':'accepted'})
