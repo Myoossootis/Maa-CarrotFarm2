@@ -7,6 +7,7 @@ import json
 from datetime import datetime, timezone
 from pathlib import Path
 import time
+import re
 
 import cv2
 from maa.controller import Win32Controller
@@ -53,6 +54,11 @@ from order_board_helpers import (
 from allocate_employee_work import CAPABILITIES, allocate
 from configure_field_employee import leave_employee_ui_if_visible
 from dismiss_offline_income import dismiss_offline_income
+from ensure_ranch_feed import recognized_text
+try:
+    from . import normal_order_delivery as delivery
+except ImportError:
+    import normal_order_delivery as delivery
 try:
     from .maa_frame_normalize import build_runtime_resource, measure_controller_offset, post_click_normalized, install_foreground_safe_inputs
 except ImportError:
@@ -62,6 +68,59 @@ except ImportError:
 RESULT = ROOT / "assets/catalog/normal_orders/latest_completion.json"
 SETTLE_SECONDS = 0.3
 IN_PROGRESS_WAIT_SECONDS = 60
+
+
+def verify_normal_triple(tasker, frame):
+    text = recognized_text(tasker, frame, (475, 1175, 205, 75), expected=(r'.+',))
+    counts = re.findall(r'完成\s*([1-9])\s*次', text)
+    if not completion_control_visible(frame) or not completion_checked(frame)[0] or counts != ['3']:
+        raise decoded.DecodeError(f'Normal triple count not confirmed; no accept: {text!r}')
+
+
+def finish_normal_delivery(tasker, controller, receipt, timeout=300):
+    """Resume only this UID; claim once and require fresh post-reward state."""
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        data = decoded.snapshot()
+        receipt = delivery.recover(receipt, data)
+        order = next((row for row in data['orders'] if row['uid'] == receipt['uid']
+                      and row['category'] == 'normal'), None)
+        if not order or order['statusCode'] not in (2, 3, 99):
+            raise decoded.DecodeError('Normal delivery UID/state changed; no new input')
+        if order['statusCode'] == 3:
+            if not open_normal_orders(controller):
+                raise decoded.DecodeError('Normal reward board unavailable')
+            number = order['slot']
+            pin = (155 + 210 * ((number - 1) % 3), 470 + 156 * ((number - 1) // 3))
+            if not post_click_normalized(controller, *pin).wait().succeeded:
+                raise decoded.DecodeError('Normal reward card not selected')
+            time.sleep(.4)
+            if _claim_reward_button(screenshot(controller)) is None:
+                raise decoded.DecodeError('Normal reward button not confirmed; no claim sent')
+            receipt = delivery.reserve_reward(receipt, decoded.snapshot())
+            if not claim_completed_reward(controller, tasker):
+                raise decoded.DecodeError('Normal reward input/outcome unresolved; no retry')
+            # Storage can update after the confirmation animation. Read only.
+            for attempt in range(5):
+                try:
+                    receipt = delivery.complete(receipt, decoded.snapshot())
+                    break
+                except decoded.DecodeError:
+                    if attempt == 4:
+                        raise
+                    time.sleep(.3)
+            ensure_returned_to_farm(tasker, controller)
+            return receipt
+        time.sleep(2)
+    raise decoded.DecodeError('Normal reward timeout; preserve receipt and do not accept again')
+
+
+def delivery_output(receipt):
+    return dict(status='completed', order_type='normal', batch_count=3,
+                operation_id=receipt['operation_id'], submitted_count=1,
+                submitted=[dict(order=receipt['order'], items=receipt['items'], acceptance_confirmed=True)],
+                target_order=None, reward_claimed=True, returned_to_farm=True,
+                generated_at_utc=datetime.now(timezone.utc).isoformat())
 
 
 
@@ -252,6 +311,9 @@ def main() -> int:
         ) + "\n",
         encoding="utf-8",
     )
+    pending_delivery = delivery.load() if decoded.enabled() else None
+    if pending_delivery and pending_delivery['status'] != 'completed':
+        pending_delivery = delivery.recover(pending_delivery, decoded.snapshot())
     products = load_products()
     controller = Win32Controller(
         hWnd=find_window(),
@@ -300,6 +362,15 @@ def main() -> int:
         if not navigation:
             raise RuntimeError("failed to open normal-order page")
 
+        if pending_delivery and pending_delivery['status'] == 'accepted':
+            receipt = finish_normal_delivery(tasker, controller, pending_delivery)
+            output = delivery_output(receipt)
+            RESULT.write_text(json.dumps(output, ensure_ascii=False, indent=2) + '\n', encoding='utf-8')
+            print(json.dumps(output, ensure_ascii=False))
+            return 0
+        if decoded.enabled() and any(row['category'] == 'normal' and row['statusCode'] in (2, 3, 99)
+                                     for row in decoded.snapshot()['orders']):
+            raise decoded.DecodeError('Untracked normal delivery; reconcile before new input or reward claim')
         reward_claimed = claim_completed_reward(controller, tasker)
 
         # A previously accepted order can still be running when a new task
@@ -334,6 +405,8 @@ def main() -> int:
         # When rematching a production target, enable triple mode without
         # freezing the old grid index — board refresh may move the recipe.
         triple_frame = prepare_completion_control(tasker, controller, products, None)
+        if decoded.enabled():
+            verify_normal_triple(tasker, triple_frame)
         pins = recognize_pins(triple_frame)
 
         # Iterate stable grid positions once. A successful submit refreshes only
@@ -431,7 +504,12 @@ def main() -> int:
                 except ImportError:
                     from scan_normal_orders import require_decoded_card_selection
                 require_decoded_card_selection(accept_frame)
+                verify_normal_triple(tasker, accept_frame)
             accept_box = _bright_accept_box(tasker, accept_frame)
+            if decoded.enabled():
+                if accept_box is None and template_hit(accept_frame, 'AcceptNormalOrderStart') is None:
+                    raise decoded.DecodeError('Normal accept control not recognized; no intent or input')
+                receipt = delivery.reserve(items, index, decoded.snapshot())
             if accept_box is None:
                 # Fall back to pipeline template click only when OCR misses.
                 if not click_template_node(controller, "AcceptNormalOrderStart"):
@@ -446,6 +524,12 @@ def main() -> int:
 
             if decoded.enabled():
                 finish_order_acceptance(tasker, controller, items)
+                receipt = delivery.recover(receipt, decoded.snapshot())
+                receipt = finish_normal_delivery(tasker, controller, receipt)
+                output = delivery_output(receipt)
+                RESULT.write_text(json.dumps(output, ensure_ascii=False, indent=2) + '\n', encoding='utf-8')
+                print(json.dumps(output, ensure_ascii=False))
+                return 0
             elif confirm_sleep_or_close_shop(tasker, controller):
                 sleep_confirmed = True
                 time.sleep(0.5)
