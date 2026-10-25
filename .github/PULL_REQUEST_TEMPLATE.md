@@ -1,6 +1,6 @@
 # Pull Request
 
-提交前请阅读 [PR 规范](../docs/zh_cn/develop/pull_request_guidelines.md)。
+开发约定见仓库根目录 `CONTRIBUTING.md`。
 
 ## 关联 Issue
 
@@ -14,8 +14,14 @@
 
 <!-- 请写清楚执行了什么验证、结果如何。不要只写“已测试”。 -->
 
-- [ ] 我已阅读并遵守 [PR 规范](../docs/zh_cn/develop/pull_request_guidelines.md)
+- [ ] 完整离线回归通过，实机验证范围单独注明
+- [ ] 应用版本与 CHANGELOG.md 一致
+- [ ] 未上传运行缓存、账户快照、客户端解包或凭证
 
 ## 截图 / 日志 / 说明
 
 <!-- 涉及界面、资源识别、工作流失败或 Bug 修复时，请提供截图、日志、Actions 链接或复现步骤。 -->
+
+## 回退与限制
+
+<!-- 代码回退方式；已执行的游戏操作需要对账，不能通过 Git 撤销。 -->

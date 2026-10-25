@@ -457,6 +457,12 @@ debug
 
 
 # --- Maa-CarrotFarm2 project ---
+/.archive/
+.env
+.env.*
+!.env.example
+*.wxapkg
+*.dmp
 .tmp/
 .venv/
 debug/

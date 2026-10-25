@@ -8,6 +8,10 @@ on:
       - ".github/workflows/check.yml"
       - "assets/**"
       - "**.py"
+      - "**.cjs"
+      - "tests/**"
+      - "CHANGELOG.md"
+      - "maatools.config.mts"
   pull_request:
     branches:
       - "**"
@@ -15,7 +19,18 @@ on:
       - ".github/workflows/check.yml"
       - "assets/**"
       - "**.py"
+      - "**.cjs"
+      - "tests/**"
+      - "CHANGELOG.md"
+      - "maatools.config.mts"
   workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: check-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   resource:
@@ -24,6 +39,10 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.10"
 
       - name: Use Node
         uses: actions/setup-node@v4
@@ -38,9 +57,48 @@ jobs:
       - name: Install maafw
         run: |
           python -m pip install --upgrade pip
-          python -m pip install --upgrade maafw --pre
+          python -m pip install -r tools/requirements.txt
+
+      - name: Validate application version
+        run: python tools/check_version.py
 
       - name: Validate JSON Schema
         run: |
           python -m pip install jsonschema==4.26.0 referencing==0.37.0
           python tools/validate_schema.py --schema-dir deps/tools --resource-dirs assets/resource --exclude-dirs assets/resource/announcement --interface-files assets/interface.json
+
+  offline-tests:
+    runs-on: windows-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.10"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Prepare pinned runtime and OCR
+        run: |
+          python -m pip install -r tools/requirements.txt
+          python tools/configure.py
+          python tools/check_version.py
+          New-Item -ItemType Directory -Force .tmp/ci | Out-Null
+      - name: Python offline regression
+        run: |
+          python -X utf8 -m unittest discover -s tests -v 2>&1 | Tee-Object .tmp/ci/python.log
+          exit $LASTEXITCODE
+      - name: Node decoder regression
+        run: |
+          node --test tools/read_only_game_state.test.cjs tools/read_only_production.test.cjs 2>&1 | Tee-Object .tmp/ci/node.log
+          exit $LASTEXITCODE
+      - name: Ensure tests preserve tracked files
+        run: git diff --exit-code
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: offline-tests-${{ github.sha }}
+          path: .tmp/ci/*.log
+          retention-days: 14

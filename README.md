@@ -2,6 +2,8 @@
 
 基于 [MaaFramework](https://github.com/MaaXYZ/MaaFramework) 的 **Win32 后台**自动化：FramePool 截图 + PostMessage 点击，不抢前台鼠标。
 
+开发版本 **0.6.4**：90 版生产状态解码已修复，[验证范围](docs/PRODUCTION90_VERIFICATION_2026-10-25.md)。开发约定见 [CONTRIBUTING.md](CONTRIBUTING.md)，交付写入 [版本记录](CHANGELOG.md)，后续按 [接手审计](docs/DEVELOPMENT_TAKEOVER_AUDIT_2026-10-25.md) 推进。
+
 > **方案决定（2026-10-25）**：Cocos 内部调用、Frida 注入及 WMPF 调试桥实验已封存，**不纳入使用脚本方案**。现有脚本维持原状；详见[封存说明](docs/ARCHIVED_COCOS_RESEARCH_2026-10-25.md)。
 
 > **聚会单已实机完成提交与领奖**（2026-10-16）：默认入口「聚会与外卖订单（自动调度）」。优先现有库存，必要时以单次交单，按界面实际次数记账；中断后可续领奖。普通订单没有每日限额。验收范围及日志见 [修复记录](docs/REPAIRS_2026-10-16.md)。

@@ -1,5 +1,7 @@
 # Suggested commit groups (do not auto-commit)
 
+> 2026-10-25：用户已明确授权保留 Git 历史、整理并上传当前项目。以下“不要自动提交／待批准”为历史约束，不适用于本次授权；后续流程以根目录 CONTRIBUTING.md 为准。
+
 > 刷新：2026-10-15 Track C。对照当前 `git status` 脏树；**不要**自动 `git add` / `git commit` / `push`。
 > 勿纳入：`.tmp/`、`debug/`、`latest_*.json` 运行态、`.venv/`、`maafw.log`、生成态 backpack `catalog.json` / `pages/` / `segments/` / `index.png`。
 
