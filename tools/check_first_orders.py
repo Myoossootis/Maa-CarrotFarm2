@@ -90,11 +90,19 @@ def enforce_first_order(controller, tasker, products, kind, evidence, progress, 
         if decoded.enabled():
             decoded.select_order(kind, 1, 1)
         frame = screenshot(controller)
-        cv2.imwrite(str(evidence / 'current.png'), frame)
-        pending = card_pending(frame, 1)
-        if not pending:
-            if not card_selected(frame, 1):
+        # A selected card can still be translucent while the board animates in.
+        # Observe only; never repeat the selection click to finish loading.
+        for observation in range(8):
+            pending = card_pending(frame, 1)
+            if pending or card_selected(frame, 1):
+                break
+            if observation == 7:
                 raise RuntimeError('first_order_not_selected: 一号位未选中，未操作其他位置')
+            check_cancelled()
+            time.sleep(.2)
+            frame = screenshot(controller)
+        cv2.imwrite(str(evidence / 'current.png'), frame)
+        if not pending:
             if template_hit(frame, 'ClickNormalOrderReplace') is None:
                 state = recognized_text(tasker, frame, (80, 750, 590, 460),
                                         expected=(r'进行中|领取奖励|已完成',))

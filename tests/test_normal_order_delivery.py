@@ -41,12 +41,19 @@ class DeliveryTests(unittest.TestCase):
         self.assertEqual(accepted['status'], 'accepted')
         claim = journal.reserve_reward(accepted, after, self.path)
         with self.assertRaisesRegex(journal.decoded.DecodeError, 'reward input'):
-            journal.recover(claim, data(), self.path)
+            journal.recover(claim, after, self.path)
         with self.assertRaises(journal.decoded.DecodeError):
             journal.complete(claim, after, self.path)
-        complete = journal.complete(claim, data(), self.path)
+        # The same UID is reused for the next recipe: waiting after a durable
+        # success-to-reward intent can be completed by readback, with no input.
+        complete = journal.recover(claim, data(), self.path)
         self.assertEqual(complete['status'], 'completed')
         self.assertTrue((self.path.parent / 'receipts' / (complete['operation_id'] + '.json')).exists())
+
+    def test_old_unbound_reward_intent_still_blocks_readback_recovery(self):
+        receipt=dict(status='reward_intent',package_version='90',uid=88,order=1)
+        with self.assertRaisesRegex(journal.decoded.DecodeError,'reward input'):
+            journal.recover(receipt,data(),self.path)
 
     def test_changed_costs_identity_stock_or_multiplier_cannot_reserve(self):
         for change in ('uid', 'slot', 'count', 'stock', 'batch', 'version'):

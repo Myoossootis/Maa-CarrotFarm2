@@ -92,6 +92,24 @@ class CheckboxPreferenceTests(unittest.TestCase):
 
 
 class PreferencePropagationTests(unittest.TestCase):
+    def test_first_card_loading_waits_without_another_selection_click(self):
+        import numpy as np
+        from tempfile import TemporaryDirectory
+        frame=np.zeros((1358,720,3),dtype=np.uint8)
+        click=SimpleNamespace(wait=lambda:SimpleNamespace(succeeded=True))
+        with TemporaryDirectory() as folder,patch.object(policy,'open_orders',return_value=True), \
+                patch.object(policy,'post_click_normalized',return_value=click) as inputs, \
+                patch.object(policy,'screenshot',return_value=frame) as screen, \
+                patch.object(policy,'card_pending',return_value=False), \
+                patch.object(policy,'card_selected',side_effect=[False,False,True]), \
+                patch.object(policy,'template_hit',return_value=(1,(0,0),0)), \
+                patch.object(policy,'read_names',return_value=['苹果','鸡蛋']), \
+                patch.object(policy.decoded,'enabled',return_value=False), \
+                patch.object(policy.time,'sleep'),patch('sys.stdout',io.StringIO()):
+            result=policy.enforce_first_order(None,None,[],'normal',Path(folder),{},allowed_products={'苹果','鸡蛋'})
+        self.assertEqual(result['status'],'allowed')
+        inputs.assert_called_once();self.assertEqual(screen.call_count,3)
+
     def test_cli_selection_reaches_both_startup_checks_and_scheduler(self):
         calls = []
         argv = ['daily', '--order-types', 'party', 'takeout', '--allowed-products', '猪肉', '玉米', '--apply']

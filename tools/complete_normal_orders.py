@@ -84,12 +84,32 @@ def finish_normal_delivery(tasker, controller, receipt, timeout=300):
     while time.monotonic() < deadline:
         data = decoded.snapshot()
         receipt = delivery.recover(receipt, data)
+        if receipt['status'] == 'completed':
+            dismiss_reward_overlay(controller)
+            ensure_returned_to_farm(tasker, controller)
+            return receipt
         order = next((row for row in data['orders'] if row['uid'] == receipt['uid']
                       and row['category'] == 'normal'), None)
         if not order or order['statusCode'] not in (2, 3, 99):
             raise decoded.DecodeError('Normal delivery UID/state changed; no new input')
         if order['statusCode'] == 3:
-            if not open_normal_orders(controller):
+            # The map's order guest can award directly while opening the board.
+            # Reserve before navigation and stop its clicks at the reward layer.
+            receipt = delivery.reserve_reward(receipt, data)
+            navigation = open_normal_orders(controller, stop_when=reward_overlay_visible)
+            if reward_overlay_visible(screenshot(controller)):
+                dismiss_reward_overlay(controller)
+                for attempt in range(8):
+                    try:
+                        receipt = delivery.complete(receipt, decoded.snapshot())
+                        break
+                    except decoded.DecodeError:
+                        if attempt == 7:
+                            raise
+                        time.sleep(.3)
+                ensure_returned_to_farm(tasker, controller)
+                return receipt
+            if not navigation:
                 raise decoded.DecodeError('Normal reward board unavailable')
             number = order['slot']
             pin = (155 + 210 * ((number - 1) % 3), 470 + 156 * ((number - 1) // 3))
@@ -99,7 +119,10 @@ def finish_normal_delivery(tasker, controller, receipt, timeout=300):
             reward_frame = screenshot(controller)
             if not card_selected(reward_frame, number) or _claim_reward_button(reward_frame) is None:
                 raise decoded.DecodeError('Normal reward button not confirmed; no claim sent')
-            receipt = delivery.reserve_reward(receipt, decoded.snapshot())
+            current = next((row for row in decoded.snapshot()['orders'] if row['category'] == 'normal'
+                            and row['uid'] == receipt['uid'] and row['slot'] == number), None)
+            if not current or current['statusCode'] != 3:
+                raise decoded.DecodeError('Normal reward source changed after navigation; no claim sent')
             if not claim_completed_reward(controller, tasker):
                 raise decoded.DecodeError('Normal reward input/outcome unresolved; no retry')
             # Storage can update after the confirmation animation. Read only.
@@ -317,6 +340,8 @@ def main() -> int:
     if startup_data is not None and startup_data['packageVersion'] != '90':
         raise decoded.DecodeError('Normal order workflow package version is unverified; no UI input')
     pending_delivery = delivery.load() if startup_data is not None else None
+    if pending_delivery and pending_delivery['status'] == 'completed':
+        pending_delivery = None  # A prior terminal receipt cannot count as a new completion.
     if pending_delivery and pending_delivery['status'] != 'completed':
         pending_delivery = delivery.recover(pending_delivery, startup_data)
     products = load_products()
@@ -367,8 +392,12 @@ def main() -> int:
         if not navigation:
             raise RuntimeError("failed to open normal-order page")
 
-        if pending_delivery and pending_delivery['status'] == 'accepted':
-            receipt = finish_normal_delivery(tasker, controller, pending_delivery)
+        if pending_delivery and pending_delivery['status'] in ('accepted', 'completed'):
+            if pending_delivery['status'] == 'completed':
+                ensure_returned_to_farm(tasker, controller)
+                receipt = pending_delivery
+            else:
+                receipt = finish_normal_delivery(tasker, controller, pending_delivery)
             output = delivery_output(receipt)
             RESULT.write_text(json.dumps(output, ensure_ascii=False, indent=2) + '\n', encoding='utf-8')
             print(json.dumps(output, ensure_ascii=False))

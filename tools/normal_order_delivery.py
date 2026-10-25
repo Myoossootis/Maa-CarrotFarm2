@@ -56,6 +56,11 @@ def recover(receipt, data, path=PATH):
     if data['packageVersion'] != '90' or receipt['package_version'] != data['packageVersion']:
         raise decoded.DecodeError('Normal delivery version changed; no replay')
     if receipt['status'] == 'reward_intent':
+        if receipt.get('reward_navigation_reserved') is True:
+            try:
+                return complete(receipt, data, path)
+            except decoded.DecodeError:
+                pass
         raise decoded.DecodeError('Unresolved normal reward input; no repeated claim or acceptance')
     if receipt['status'] == 'accept_intent':
         if not decoded.submission_confirmed(receipt['items'], data):
@@ -70,9 +75,12 @@ def reserve_reward(receipt, data, path=PATH):
     if data['packageVersion'] != '90' or receipt['package_version'] != data['packageVersion']:
         raise decoded.DecodeError('Normal reward package version changed')
     order = next((row for row in data['orders'] if row['uid'] == receipt['uid'] and row['category'] == 'normal'), None)
-    if receipt['status'] != 'accepted' or not order or order['statusCode'] != 3:
+    if (receipt['status'] != 'accepted' or not order or order['statusCode'] != 3
+            or order['slot'] != receipt['order']
+            or {row['itemId']: row['count'] * 3 for row in order['costs']}
+               != {row['game_item_id']: row['required'] for row in receipt['items']}):
         raise decoded.DecodeError('Normal reward UID or success state not confirmed')
-    receipt = {**receipt, 'status': 'reward_intent'}
+    receipt = {**receipt, 'status': 'reward_intent', 'reward_navigation_reserved': True}
     write_json(path, receipt)
     return receipt
 
