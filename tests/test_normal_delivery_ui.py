@@ -14,6 +14,10 @@ normal=importlib.import_module('complete_normal_orders')
 
 
 class NormalDeliveryUITests(unittest.TestCase):
+    def setUp(self):
+        guard=patch.object(normal.delivery,'confirm_return',side_effect=lambda receipt:dict(receipt,returned_to_farm=True))
+        guard.start();self.addCleanup(guard.stop)
+
     def test_reward_navigation_is_reserved_and_stops_at_overlay_without_second_claim(self):
         overlay={'visible':True}
         receipt=dict(status='accepted',uid=7,order=1)
@@ -123,6 +127,29 @@ class NormalDeliveryUITests(unittest.TestCase):
                 patch.object(normal.delivery,'load') as receipt,patch.object(normal,'find_window') as connect:
             with self.assertRaisesRegex(normal.decoded.DecodeError,'version is unverified'):normal.main()
             connect.assert_not_called();receipt.assert_not_called()
+
+    def test_completed_but_not_returned_resumes_only_farm_return(self):
+        pending=dict(status='completed',operation_id='op',order=1,items=[],returned_to_farm=False)
+        with tempfile.TemporaryDirectory() as folder,ExitStack() as stack:
+            stack.enter_context(patch.object(normal,'RESULT',Path(folder)/'result.json'))
+            stack.enter_context(patch.object(sys,'argv',['normal','--prepare-only']))
+            stack.enter_context(patch('sys.stdout',io.StringIO()))
+            stack.enter_context(patch.object(normal.decoded,'enabled',return_value=True))
+            stack.enter_context(patch.object(normal.decoded,'snapshot',return_value={'packageVersion':'90'}))
+            stack.enter_context(patch.object(normal.delivery,'load',return_value=pending))
+            stack.enter_context(patch.object(normal.delivery,'recover',return_value=pending))
+            for name in ('Win32Controller','Resource','Tasker','find_window','load_products',
+                         'install_foreground_safe_inputs','measure_controller_offset','build_runtime_resource',
+                         'dismiss_offline_income','leave_employee_ui_if_visible','dismiss_reward_overlay'):
+                stack.enter_context(patch.object(normal,name,return_value=MagicMock()))
+            stack.enter_context(patch.object(normal,'open_normal_orders',return_value=True))
+            returned=stack.enter_context(patch.object(normal,'ensure_returned_to_farm',return_value=True))
+            navigate=stack.enter_context(patch.object(normal,'open_normal_orders'))
+            accept=stack.enter_context(patch.object(normal,'prepare_completion_control'))
+            claim=stack.enter_context(patch.object(normal,'claim_completed_reward'))
+            self.assertEqual(normal.main(),0)
+            self.assertTrue(json.loads(normal.RESULT.read_text(encoding='utf-8'))['returned_to_farm'])
+            returned.assert_called_once();accept.assert_not_called();claim.assert_not_called();navigate.assert_not_called()
 
 
 if __name__=='__main__':unittest.main()

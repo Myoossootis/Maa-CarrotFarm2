@@ -8,6 +8,10 @@ import complete_normal_orders as normal
 
 
 class RewardRecoveryTests(unittest.TestCase):
+    def setUp(self):
+        guard=patch.object(normal.delivery,'confirm_return',side_effect=lambda receipt:dict(receipt,returned_to_farm=True))
+        guard.start();self.addCleanup(guard.stop)
+
     def test_claim_intent_precedes_only_claim_and_no_new_accept(self):
         receipt={'uid':88,'order':1,'status':'accepted'}
         data={'orders':[{'uid':88,'category':'normal','slot':1,'statusCode':3}]}

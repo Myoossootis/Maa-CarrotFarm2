@@ -144,7 +144,7 @@ def main():
             if decoded.snapshot()['packageVersion'] != '90':
                 raise decoded.DecodeError('Normal loop version changed; no UI input')
             pending = delivery.load()
-            if not pending or pending['status'] == 'completed':
+            if not pending or (pending['status'] == 'completed' and pending.get('returned_to_farm', True) is not False):
                 policy = ['--order-type', 'normal']
                 if args.allowed_products is not None:
                     policy.extend(['--allowed-products', *sorted(args.allowed_products)])

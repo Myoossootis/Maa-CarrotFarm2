@@ -78,6 +78,12 @@ def verify_normal_triple(tasker, frame):
         raise decoded.DecodeError(f'Normal triple count not confirmed; no accept: {text!r}')
 
 
+def finish_return(tasker, controller, receipt):
+    if not ensure_returned_to_farm(tasker, controller):
+        raise decoded.DecodeError('Normal completion return not confirmed')
+    return delivery.confirm_return(receipt)
+
+
 def finish_normal_delivery(tasker, controller, receipt, timeout=300):
     """Resume only this UID; claim once and require fresh post-reward state."""
     deadline = time.monotonic() + timeout
@@ -86,8 +92,7 @@ def finish_normal_delivery(tasker, controller, receipt, timeout=300):
         receipt = delivery.recover(receipt, data)
         if receipt['status'] == 'completed':
             dismiss_reward_overlay(controller)
-            ensure_returned_to_farm(tasker, controller)
-            return receipt
+            return finish_return(tasker, controller, receipt)
         order = next((row for row in data['orders'] if row['uid'] == receipt['uid']
                       and row['category'] == 'normal'), None)
         if not order or order['statusCode'] not in (2, 3, 99):
@@ -107,8 +112,7 @@ def finish_normal_delivery(tasker, controller, receipt, timeout=300):
                         if attempt == 7:
                             raise
                         time.sleep(.3)
-                ensure_returned_to_farm(tasker, controller)
-                return receipt
+                return finish_return(tasker, controller, receipt)
             if not navigation:
                 raise decoded.DecodeError('Normal reward board unavailable')
             number = order['slot']
@@ -134,8 +138,7 @@ def finish_normal_delivery(tasker, controller, receipt, timeout=300):
                     if attempt == 4:
                         raise
                     time.sleep(.3)
-            ensure_returned_to_farm(tasker, controller)
-            return receipt
+            return finish_return(tasker, controller, receipt)
         time.sleep(2)
     raise decoded.DecodeError('Normal reward timeout; preserve receipt and do not accept again')
 
@@ -340,7 +343,8 @@ def main() -> int:
     if startup_data is not None and startup_data['packageVersion'] != '90':
         raise decoded.DecodeError('Normal order workflow package version is unverified; no UI input')
     pending_delivery = delivery.load() if startup_data is not None else None
-    if pending_delivery and pending_delivery['status'] == 'completed':
+    if (pending_delivery and pending_delivery['status'] == 'completed'
+            and pending_delivery.get('returned_to_farm', True) is not False):
         pending_delivery = None  # A prior terminal receipt cannot count as a new completion.
     if pending_delivery and pending_delivery['status'] != 'completed':
         pending_delivery = delivery.recover(pending_delivery, startup_data)
@@ -381,6 +385,12 @@ def main() -> int:
         dismiss_offline_income(controller, tasker)
         leave_employee_ui_if_visible(controller)
         dismiss_reward_overlay(controller)
+        if pending_delivery and pending_delivery['status'] == 'completed':
+            receipt = finish_return(tasker, controller, pending_delivery)
+            output = delivery_output(receipt)
+            RESULT.write_text(json.dumps(output, ensure_ascii=False, indent=2) + '\n', encoding='utf-8')
+            print(json.dumps(output, ensure_ascii=False))
+            return 0
         navigation = open_normal_orders(controller)
         if not navigation:
             # Reward "继续" overlay or a leftover popup can block the notice board.
@@ -392,12 +402,8 @@ def main() -> int:
         if not navigation:
             raise RuntimeError("failed to open normal-order page")
 
-        if pending_delivery and pending_delivery['status'] in ('accepted', 'completed'):
-            if pending_delivery['status'] == 'completed':
-                ensure_returned_to_farm(tasker, controller)
-                receipt = pending_delivery
-            else:
-                receipt = finish_normal_delivery(tasker, controller, pending_delivery)
+        if pending_delivery and pending_delivery['status'] == 'accepted':
+            receipt = finish_normal_delivery(tasker, controller, pending_delivery)
             output = delivery_output(receipt)
             RESULT.write_text(json.dumps(output, ensure_ascii=False, indent=2) + '\n', encoding='utf-8')
             print(json.dumps(output, ensure_ascii=False))

@@ -48,6 +48,8 @@ class DeliveryTests(unittest.TestCase):
         # success-to-reward intent can be completed by readback, with no input.
         complete = journal.recover(claim, data(), self.path)
         self.assertEqual(complete['status'], 'completed')
+        self.assertIs(complete['returned_to_farm'],False)
+        self.assertIs(journal.confirm_return(complete,self.path)['returned_to_farm'],True)
         self.assertTrue((self.path.parent / 'receipts' / (complete['operation_id'] + '.json')).exists())
 
     def test_old_unbound_reward_intent_still_blocks_readback_recovery(self):

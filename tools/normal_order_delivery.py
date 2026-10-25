@@ -95,7 +95,18 @@ def complete(receipt, data, path=PATH):
             or order and order['statusCode'] != 1):
         raise decoded.DecodeError('Normal reward outcome unconfirmed; no new order')
     receipt = {**receipt, 'status': 'completed', 'reward_claimed': True,
+               'returned_to_farm': False,
                'completed_at_utc': datetime.now(timezone.utc).isoformat()}
+    write_json(path.parent / 'receipts' / (receipt['operation_id'] + '.json'), receipt)
+    write_json(path, receipt)
+    return receipt
+
+
+def confirm_return(receipt, path=PATH):
+    """Caller has confirmed the farm; this checkpoint never issues game input."""
+    if receipt['status'] != 'completed':
+        raise decoded.DecodeError('Cannot finish return before business completion')
+    receipt = {**receipt, 'returned_to_farm': True}
     write_json(path.parent / 'receipts' / (receipt['operation_id'] + '.json'), receipt)
     write_json(path, receipt)
     return receipt
