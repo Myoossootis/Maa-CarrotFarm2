@@ -19,7 +19,6 @@ try:
 except ImportError:
     import decoded_runtime as decoded
 
-from configure_field_employee import locate_nav
 from order_template_click import open_normal_orders, click_template_node, template_hit
 from scan_normal_orders import (
     ROOT,
@@ -52,7 +51,7 @@ from order_board_helpers import (
     ensure_returned_to_farm,
 )
 from allocate_employee_work import CAPABILITIES, allocate
-from configure_field_employee import leave_employee_ui_if_visible, match, match_nav
+from configure_field_employee import leave_employee_ui_if_visible
 from dismiss_offline_income import dismiss_offline_income
 try:
     from .maa_frame_normalize import build_runtime_resource, measure_controller_offset, post_click_normalized, install_foreground_safe_inputs
@@ -308,17 +307,8 @@ def main() -> int:
         if template_hit(screenshot(controller), 'VerifyNormalOrderInProgress') is not None:
             in_progress_waited = True
             time.sleep(IN_PROGRESS_WAIT_SECONDS)
-            # Close board so the cycle can reopen for reward/next scan.
-            close_score, close_xy = locate_nav(
-                screenshot(controller), "popup_close.png", (0, 1190, 130, 150)
-            )
-            if close_score >= 0.75:
-                post_click_normalized(controller, close_xy[0] + 32, close_xy[1] + 38).wait()
-                time.sleep(0.8)
-            frame = screenshot(controller)
-            on_farm = match(frame, "phone_icon.png", (610, 1210, 105, 140)) >= 0.68 or match_nav(
-                frame, "backpack.png", (600, 1150, 120, 120)
-            ) >= 0.70
+            # The next cycle must start on a verified map, not shared HUD icons.
+            on_farm = ensure_returned_to_farm(tasker, controller)
             output = {
                 "generated_at_utc": datetime.now(timezone.utc).isoformat(),
                 "elapsed_seconds": round(time.perf_counter() - started, 3),
