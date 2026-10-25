@@ -122,6 +122,7 @@ def plan_latest(now: datetime | None = None) -> dict:
     return {
         "target_order": source["target_order"]["order"],
         "target_items": source["target_order"].get("items", []),
+        "bound_target": source['target_order'],
         "source_generated_at_utc": generated,
         "production_targets": targets,
         "order_age_seconds": round(age, 1),

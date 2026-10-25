@@ -117,7 +117,8 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('script', choices=['reconcile_production.py', 'run_manual_planting.py', 'run_feed_production.py', 'cycle', 'ensure_ranch_feed.py', 'check_first_orders.py', 'refresh_order.py', 'complete_normal_orders.py', 'complete_batch_orders.py', 'run_employee_order_plan.py', 'monitor_employee_products.py', 'dismiss_offline_income.py', 'enter_restaurant.py', 'enter_farm.py', 'open_phone.py', 'open_employee_config.py', 'select_farm_employment.py', 'open_field_detail.py', 'return_employee_list.py', 'locate_field_2.py', 'open_work_plan.py', 'close_work_plan.py', 'verify_slot_work_plan.py', 'run_daily_orders.py', 'run_normal_order_loop.py'])
     args, forwarded = parser.parse_known_args()
-    inherited_normal_lock = args.script == 'complete_normal_orders.py' and inherits_cycle_lock()
+    protected_step = args.script in {'complete_normal_orders.py', 'run_employee_order_plan.py', 'monitor_employee_products.py'}
+    inherited_normal_lock = protected_step and inherits_cycle_lock()
     if inherited_normal_lock:
         os.environ.setdefault('CARROT_UI_PARENT_PID', os.environ['CARROT_UI_CYCLE_OWNER'])
     if importlib.metadata.version('MaaFw') != '5.13.1':
@@ -153,7 +154,7 @@ def main():
         with cycle_lock():
             return refresh_order.main()
     sys.argv = [args.script, *forwarded]
-    if args.script == 'complete_normal_orders.py' and not inherited_normal_lock:
+    if protected_step and not inherited_normal_lock:
         with cycle_lock():
             runpy.run_path(str(ROOT / 'tools' / args.script), run_name='__main__')
         return 0
