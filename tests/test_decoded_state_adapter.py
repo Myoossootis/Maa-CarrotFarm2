@@ -19,23 +19,40 @@ ROOT = Path(__file__).resolve().parents[1]
 COUNTS = dict(normal=3, party=6, takeout=6)
 
 
-def snapshot():
-    return {'schemaVersion': 1, 'readOnly': True, 'source': 'local_client_cache',
+def snapshot(*, production=False):
+    data = {'schemaVersion': 1, 'readOnly': True, 'source': 'local_client_cache', 'packageVersion': '87',
             'capturedAt': '2026-10-17T18:00:00Z',
             'inventory': {'products': [{'itemId': 29, 'name': '苹果', 'count': 2},
                                        {'itemId': 157, 'name': '甘蔗', 'count': 1}]},
             'orders': [{'category': 'normal', 'slot': 1, 'uid': 1001, 'statusCode': 1,
                         'costs': [{'itemId': 29, 'name': '苹果', 'count': 2},
                                   {'itemId': 157, 'name': '甘蔗', 'count': 3}]}],
+            'production': {'complete': True, 'semanticsPackageVersion': '87', 'buildings': [
+                {'buildingItemId': 12, 'buildingUid': 12, 'slotCount': 1,
+                 'slots': [{'slot': 1, 'outputId': 0, 'status': 'empty'}]},
+                {'buildingItemId': 723, 'buildingUid': 723, 'slotCount': 1,
+                 'slots': [{'slot': 1, 'outputId': 0, 'status': 'empty'}]}]},
             'employees': {'plans': [
-                {'buildingItemId': 12, 'employees': [{'name': '员工甲'}], 'targets': [],
+                {'buildingItemId': 12, 'buildingUid': 12, 'employees': [{'name': '员工甲'}], 'targets': [],
                  'heldProducts': [], 'productionOperations': None},
-                {'buildingItemId': 723, 'employees': [{'name': '员工乙'}],
+                {'buildingItemId': 723, 'buildingUid': 723, 'employees': [{'name': '员工乙'}],
                  'targets': [{'name': '鸡蛋', 'count': 18}],
                  'heldProducts': [{'name': '鸡蛋', 'count': 20}], 'productionOperations': None}]}}
+    if not production:
+        data.pop('production')
+    return data
 
 
 class DecodedAdapterTests(unittest.TestCase):
+    def test_preview_preserves_planted_ground_even_without_employee_plan(self):
+        source = snapshot(production=True)
+        source['production']['buildings'][0]['slots'][0].update(outputId=103, status='growing')
+        result = plan_decoded(source, 1)
+        self.assertFalse(result['allocation']['ready'])
+        self.assertEqual(result['allocation']['jobs'], [])
+        self.assertEqual(result['assignment_blockers']['field_1'], 'physical_production_busy')
+        self.assertEqual(result['allocation']['unmet'][0]['reason'], 'all_capable_slots_busy')
+
     def test_multiplier_applied_once_and_inventory_not_multiplied(self):
         source = snapshot()
         original = copy.deepcopy(source)
@@ -103,7 +120,7 @@ class DecodedAdapterTests(unittest.TestCase):
         self.assertFalse(ranch['idle_verified_for_execution'])
 
     def test_existing_planner_consumes_adapter_and_preserves_busy_slots(self):
-        preview = plan_decoded(snapshot(), 3)
+        preview = plan_decoded(snapshot(production=True), 3)
         self.assertEqual(preview['target_order']['total_missing'], 12)
         self.assertIn('ranch_2', preview['cached_busy_slots_preserved'])
         self.assertFalse(preview['execution_eligible'])

@@ -140,16 +140,25 @@ def plan_decoded(source: dict, batch_count: int) -> dict:
     adapted = adapt_snapshot(source, {'normal': batch_count, 'party': 1, 'takeout': 1})
     target = prepare_order_target(adapted['orders']['normal'])
     capabilities = load_capabilities()
-    observations = {entry['slot_id']: entry for entry in adapted['employees']}
-    slots = [slot for slot in capabilities['slots'] if
-             observations.get(slot['id'], {}).get('cached_state') == 'no_plan_in_cache']
+    try:
+        from .decoded_runtime import assignment_blocker
+    except ImportError:
+        from decoded_runtime import assignment_blocker
+    blockers = {slot['id']: assignment_blocker(slot['id'], source) for slot in capabilities['slots']}
+    slots = [slot for slot in capabilities['slots'] if blockers[slot['id']] is None]
     allocation = allocate(target['production_targets'], slots, aliases=capabilities.get('product_aliases')) if target else None
+    if allocation:
+        for entry in allocation['unmet']:
+            if entry['reason'] == 'no_employee_capability' and capable_slots(
+                    capabilities['slots'], entry['name'], aliases=capabilities.get('product_aliases')):
+                entry['reason'] = 'all_capable_slots_busy'
     return {'mode': 'decoded_shadow_preview', 'execution_eligible': False,
             'source_generated_at_utc': adapted['generated_at_utc'],
             'batch_count_assumed': batch_count, 'batch_control_verified': False,
             'capabilities_source': 'existing_catalog_accepted_by_user',
             'target_order': target, 'allocation': allocation,
             'cached_busy_slots_preserved': [entry['slot_id'] for entry in adapted['employees'] if entry['cached_state'] == 'busy'],
+            'assignment_blockers': {slot: reason for slot, reason in blockers.items() if reason},
             'mapping_issues': adapted['mapping_issues']}
 
 

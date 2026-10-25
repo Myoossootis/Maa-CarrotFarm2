@@ -26,7 +26,7 @@ from test_decoded_state_adapter import snapshot
 
 
 def state():
-    data = snapshot()
+    data = snapshot(production=True)
     data.update(mode='automation', capturedAt=datetime.now(timezone.utc).isoformat(), storageSequence=22)
     data['inventory']['records'] = [{'itemId': 19, 'count': 9}]
     data['orders'][0]['menuEligibility'] = dict(unlocked=True, levelSufficient=True)
@@ -38,6 +38,10 @@ def state():
                                                    targets=[], heldProducts=[], productionOperations=None))
     for plan in data['employees']['plans']:
         plan.setdefault('accumulated', [])
+        plan.setdefault('buildingUid', plan['buildingItemId'])
+        if plan['buildingItemId'] not in buildings and plan['buildingItemId'] not in (32, 878):
+            data['production']['buildings'].append(dict(buildingItemId=plan['buildingItemId'],
+                buildingUid=plan['buildingUid'], slotCount=1, slots=[dict(slot=1, outputId=0, status='empty')]))
     return data
 
 
@@ -141,9 +145,49 @@ class FormalBackendTests(unittest.TestCase):
             workers.verify_saved_plan(object(), object(), 'field_1', {'番茄': 2})
             verify.assert_called_once_with('field_1', {'番茄': 2}, repeat=False)
 
+    def test_empty_employee_plan_does_not_make_a_growing_field_schedulable(self):
+        data = state()
+        area = data['production']['buildings'][0]
+        area['slots'][0].update(outputId=103, status='growing')
+        with patch.object(reader, 'snapshot', return_value=data), patch('sys.stdout', io.StringIO()):
+            result = planner.idle_allocation(object(), object(), [{'name': '甘蔗', 'needed': 3}])
+        self.assertNotIn('field_1', [job['slot_id'] for job in result['jobs']])
+        self.assertIn({'slot_id': 'field_1', 'state': 'physical_production_busy'}, result['busy_slots_preserved'])
+
+    def test_missing_production_and_existing_crops_stop_before_opening_editor(self):
+        for status in ('growing', 'mature', 'needs_feed', 'unknown', None):
+            data = state()
+            if status is None:
+                del data['production']
+            else:
+                data['production']['buildings'][0]['slots'][0].update(outputId=103, status=status)
+            with self.subTest(status=status), patch.object(reader, 'snapshot', return_value=data), patch.object(workers, 'open_plan') as editor:
+                with self.assertRaises(reader.DecodeError):
+                    workers.configure_items(object(), object(), 'field_1', {'番茄': 2})
+                editor.assert_not_called()
+
+    def test_assignment_requires_complete_owned_slots_and_no_pending_products(self):
+        cases = [
+            (lambda data: data['production'].update(complete=False), 'production_state_incomplete'),
+            (lambda data: data['production'].update(semanticsPackageVersion=None), 'production_state_incomplete'),
+            (lambda data: data['production']['buildings'][0].update(buildingUid=999), 'production_owner_unconfirmed'),
+            (lambda data: data['production']['buildings'][0].update(slots=[]), 'production_state_incomplete'),
+            (lambda data: data['production']['buildings'][0]['slots'][0].update(slot=None), 'production_state_incomplete'),
+            (lambda data: reader.plan('field_1', data).update(accumulated=[dict(count=1)]), 'employee_products_pending'),
+        ]
+        for change, reason in cases:
+            data = state()
+            change(data)
+            with self.subTest(reason=reason):
+                self.assertEqual(reader.assignment_blocker('field_1', data), reason)
+        data = state()
+        data['employees']['plans'][0]['employees'] = []
+        self.assertEqual(reader.assignment_blocker('field_1', data), 'missing_employee')
+        self.assertIsNone(reader.assignment_blocker('field_1', state()))
+
     def test_configure_uses_same_clicks_but_only_postsave_decoded_quantity_check(self):
         # Every game/UI method is mocked; this does not send any input.
-        with patch.object(reader, 'is_idle', return_value=True), \
+        with patch.object(reader, 'assignment_blocker', return_value=None), \
              patch.object(reader, 'verify_plan') as verify, \
              patch.object(workers, 'open_plan', return_value=(object(), 600)), \
              patch.object(workers, 'screenshot', return_value=object()), \
@@ -158,13 +202,13 @@ class FormalBackendTests(unittest.TestCase):
             verify.assert_called_once_with('field_1', {'番茄': 2}, repeat=False)
 
     def test_busy_worker_and_missing_saved_readback_block_completion(self):
-        with patch.object(reader, 'is_idle', return_value=False), patch.object(workers, 'open_plan') as open_plan:
+        with patch.object(reader, 'assignment_blocker', return_value='employee_plan_busy'), patch.object(workers, 'open_plan') as open_plan:
             with self.assertRaises(reader.DecodeError):
                 workers.configure_items(object(), object(), 'field_1', {'番茄': 2})
             open_plan.assert_not_called()
 
     def test_save_readback_failure_does_not_report_success_or_repeat_save(self):
-        with patch.object(reader, 'is_idle', return_value=True), \
+        with patch.object(reader, 'assignment_blocker', return_value=None), \
              patch.object(reader, 'verify_plan', side_effect=reader.DecodeError('not persisted')), \
              patch.object(workers, 'open_plan', return_value=(object(), 600)), \
              patch.object(workers, 'screenshot', return_value=object()), \
