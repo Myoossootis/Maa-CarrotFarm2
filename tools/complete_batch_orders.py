@@ -35,6 +35,7 @@ from runtime_state import write_json
 from order_board_helpers import ensure_returned_to_farm, confirm_sleep_or_close_shop, finish_order_acceptance
 from complete_normal_orders import claim_completed_reward, reward_overlay_visible, dismiss_reward_overlay
 from order_template_click import click_template_node, normalize_order_type, open_orders
+from order_board_availability import probe_availability, WAITING_STATES
 from production_targets import (
     build_targets,
     order_contains_unsupported_product,
@@ -399,6 +400,20 @@ def run_batch(
             delivery.update(status='completed', reward_claimed=True, reward_evidence=reward_evidence)
             write_json(delivery_path, delivery)
             _write(delivery)
+            return 0
+        stage = 'board_availability'
+        availability = probe_availability(tasker, controller, order_type)
+        if availability['status'] == 'board_unknown':
+            raise RuntimeError(f'board_unknown: {availability}')
+        if availability['status'] in WAITING_STATES:
+            # A cached recipe cannot authorize selection or production on an
+            # empty current board. Leave any existing delivery receipt intact.
+            ensure_returned_to_farm(tasker, controller)
+            _write(dict(generated_at_utc=datetime.now(timezone.utc).isoformat(),
+                        status=availability['status'], order_type=order_type,
+                        board_availability=availability, next_available=None,
+                        submitted_count=0, submitted=[], target_order=None,
+                        returned_to_farm=True))
             return 0
         stage = "read_recipe"
         if decoded.enabled():
