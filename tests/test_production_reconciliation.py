@@ -133,6 +133,19 @@ class ReconciliationTests(unittest.TestCase):
             record = json.loads((Path(folder) / 'collections/field_1.json').read_text(encoding='utf-8'))
             self.assertEqual(record['status'], 'blocked_before_input')
 
+    def test_repeat_mode_change_before_click_does_not_reserve_input(self):
+        before = ready()
+        changed = copy.deepcopy(before)
+        changed['employees']['repeatEnabled'] = True
+        with tempfile.TemporaryDirectory() as folder:
+            def collect(candidate, reserve, evidence):
+                reserve(changed)
+                self.fail('must not reach business input')
+            with self.assertRaises(decoded.DecodeError):
+                collect_once('field_1', Mock(return_value=before), collect, folder)
+            record = json.loads((Path(folder) / 'collections/field_1.json').read_text(encoding='utf-8'))
+            self.assertFalse(record['input_reserved'])
+
 
 if __name__ == '__main__':
     unittest.main()

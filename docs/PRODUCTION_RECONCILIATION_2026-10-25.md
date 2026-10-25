@@ -42,7 +42,7 @@
 
 ## 证据与限制
 
-完整回归：Python 505 项中 502 项通过、3 项因可选旧截图缺失跳过（39.091 秒）；Node 23 / 23 通过；接口和资源 Schema 校验通过，跟踪文件完整、差异检查通过。旧测试原先要求“接取后扣料未确认时不留文件”，已改为要求保留 `accept_intent` 且 `acceptance_confirmed=false`；这与防重复扣料规则一致，不放宽成功判定。
+完整回归：Python 506 项中 503 项通过、3 项因可选旧截图缺失跳过（36.905 秒）；Node 23 / 23 通过；接口和资源 Schema 校验通过，跟踪文件完整、差异检查通过。点击前再次核对重复生产开关和完整候选条件，开关变更不能预留输入。旧测试原先要求“接取后扣料未确认时不留文件”，已改为要求保留 `accept_intent` 且 `acceptance_confirmed=false`；这与防重复扣料规则一致，不放宽成功判定。
 
 本地证据：`.tmp/reconcile_2026-10-25/` 的 `before.json`、`report_before.json`、`ranch1_live.log`、`ranch1_readback_recovery.log`、`navigation_result.json`、`order_live.log` 和失败截图；以及 `.tmp/production_reconciliation/collections/ranch_1.json` 的持久化回执。所有账户快照和原始截图留本地。
 

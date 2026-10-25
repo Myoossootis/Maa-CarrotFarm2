@@ -6,11 +6,11 @@ from pathlib import Path
 
 try:
     from . import decoded_runtime as decoded
-    from .production_reconciliation import reconcile, collection_candidate, collection_identity, confirm_collection
+    from .production_reconciliation import reconcile, collection_candidate, confirm_collection
     from .runtime_state import write_json
 except ImportError:
     import decoded_runtime as decoded
-    from production_reconciliation import reconcile, collection_candidate, collection_identity, confirm_collection
+    from production_reconciliation import reconcile, collection_candidate, confirm_collection
     from runtime_state import write_json
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -46,7 +46,7 @@ def collect_once(slot_id, reader, collect, folder):
     def reserve(before):
         decoded.validate(before)
         if (before['packageVersion'] != current['packageVersion'] or
-                collection_identity(decoded.plan(slot_id, before)) != candidate['identity']):
+                collection_candidate(slot_id, before) != candidate):
             raise decoded.DecodeError('Collection identity changed; no click: ' + slot_id)
         intent.update(status='intent', input_reserved=True, before=before)
         write_json(journal, intent)
