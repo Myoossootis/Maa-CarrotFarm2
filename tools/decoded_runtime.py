@@ -159,6 +159,37 @@ def is_idle(slot_id, data=None):
     return not (entry['targets'] or entry['heldProducts'] or entry.get('productionOperations'))
 
 
+def assignment_blocker(slot_id, data=None):
+    """An empty employee plan alone does not authorize using planted ground."""
+    data = snapshot() if data is None else data
+    entry = plans(data).get(slot_id)
+    if not entry or not entry['employees'] or any(x.get('available') is False for x in entry['employees']):
+        return 'missing_employee'
+    if not is_idle(slot_id, data):
+        return 'employee_plan_busy'
+    if any(x['count'] > 0 for x in entry.get('accumulated', [])):
+        return 'employee_products_pending'
+    production = data.get('production') or {}
+    if (production.get('complete') is not True or not production.get('semanticsPackageVersion') or
+            production['semanticsPackageVersion'] != data.get('packageVersion')):
+        return 'production_state_incomplete'
+    areas = [area for area in production.get('buildings', [])
+             if area['buildingItemId'] == entry['buildingItemId']]
+    owner = entry.get('buildingUid')
+    if type(owner) is not int or owner <= 0 or len(areas) != 1 or areas[0].get('buildingUid') != owner:
+        return 'production_owner_unconfirmed'
+    area = areas[0]
+    slots = area.get('slots', [])
+    numbers = [slot.get('slot') for slot in slots]
+    if (not slots or len(slots) != area.get('slotCount') or
+            any(type(number) is not int for number in numbers) or
+            sorted(numbers) != list(range(1, len(slots) + 1))):
+        return 'production_state_incomplete'
+    if any(slot.get('outputId') != 0 or slot.get('status') != 'empty' for slot in slots):
+        return 'physical_production_busy'
+    return None
+
+
 def progress_items(slot_id, data=None):
     entry = plan(slot_id, data)
     gained = {x['itemId']: x['count'] for x in entry['accumulated']}

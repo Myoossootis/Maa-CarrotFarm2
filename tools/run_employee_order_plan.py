@@ -66,8 +66,8 @@ except ImportError:
 def check_all_idle(controller: Win32Controller, tasker: Tasker, jobs: list[dict]) -> None:
     if decoded.enabled():
         data = decoded.snapshot()
-        if any(not decoded.is_idle(job['slot_id'], data) for job in jobs):
-            raise decoded.DecodeError('Decoded employee slot is busy; preserving existing plan')
+        if any(decoded.assignment_blocker(job['slot_id'], data) for job in jobs):
+            raise decoded.DecodeError('Decoded employee or production slot is unavailable; preserving existing work')
         return
     for job in jobs:
         slot_id = job["slot_id"]
@@ -94,10 +94,11 @@ def idle_allocation(controller, tasker, targets):
             continue
         print(f'[排产] 检查空闲岗位 {slot_id}', flush=True)
         if decoded.enabled():
-            if decoded.is_idle(slot_id, data):
+            blocker = decoded.assignment_blocker(slot_id, data)
+            if blocker is None:
                 idle.append(slot)
             else:
-                busy.append({'slot_id': slot_id, 'state': 'decoded_busy'})
+                busy.append({'slot_id': slot_id, 'state': blocker})
             continue
         _, state = find_slot_action(controller, slot_id)
         if state == "collect_supplies":

@@ -1019,8 +1019,10 @@ def configure_items(
             )
         normalized_items[canonical] = normalized_items.get(canonical, 0) + int(quantity)
     items = normalized_items
-    if decoded.enabled() and not decoded.is_idle(slot_id):
-        raise decoded.DecodeError('Employee has a decoded plan or uncollected products; refusing overwrite')
+    if decoded.enabled():
+        blocker = decoded.assignment_blocker(slot_id)
+        if blocker:
+            raise decoded.DecodeError(f'{slot_id}: {blocker}; preserving existing employee and physical production')
     frame, button_y = open_plan(controller, slot_id)
     if not decoded.enabled():
         current_capacity = capacity(tasker, frame)
