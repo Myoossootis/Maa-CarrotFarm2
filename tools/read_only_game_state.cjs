@@ -1,0 +1,335 @@
+'use strict';
+const fs=require('node:fs'), path=require('node:path'), crypto=require('node:crypto'), cp=require('node:child_process');
+const {performance}=require('node:perf_hooks');
+const {productionOf}=require('./read_only_production.cjs');
+function readv(buf,p){var v=0,n=0,x;do{if(p>=buf.length||n>49)throw Error('varint');x=buf[p++];v+=(x&127)*2**n;n+=7;}while(x&128);return [v,p];}
+function crc32(b){var c=0xffffffff;for(var byte of b){c^=byte;for(var j=0;j<8;j++)c=(c>>>1)^((c&1)?0xedb88320:0);}return (c^0xffffffff)>>>0;}
+function parseMMKV(buf){var p=readv(buf,0)[1],out=new Map,records=0;while(p<buf.length){var x=readv(buf,p),kl=x[0];p=x[1];if(kl>100000||p+kl>buf.length)throw Error('key range '+p);var key=buf.toString('utf8',p,p+kl);p+=kl;x=readv(buf,p);var vl=x[0];p=x[1];if(vl>buf.length-p)throw Error('value range '+p);if(vl)out.set(key,buf.subarray(p,p+vl));else out.delete(key);p+=vl;records++;}return {records,values:out};}
+function unwrapValue(v){var x=readv(v,0);if(x[0]!==v.length-x[1])throw Error('inner length');return JSON.parse(v.toString('utf8',x[1]));}
+function extraOf(s){return Object.fromEntries(String(s||'').split(';').filter(Boolean).map(seg=>{var i=seg.indexOf(',');return [seg.slice(0,i),seg.slice(i+1)]}));}
+
+const ROOT=path.resolve(__dirname,'..');
+const APP='wx2d7c1a53c1bd45e1';
+const MODES=['inventory','orders','employees','production','automation','family','all'];
+const PRODUCT_TYPES=new Set([7,11,23,94]);
+
+function argumentsOf(argv){
+  const options={mode:argv[0]||'all',output:null,applet:null,python:path.join(ROOT,'.venv','Scripts','python.exe')};
+  if(!MODES.includes(options.mode)) throw Error('Usage: node tools/read_only_game_state.cjs '+MODES.join('|')+' [--output FILE] [--applet DIR] [--python EXE]');
+  for(let i=1;i<argv.length;i+=2){
+    const key={'--output':'output','--applet':'applet','--python':'python'}[argv[i]];
+    if(!key||!argv[i+1]) throw Error('Unknown or incomplete argument: '+argv[i]);
+    options[key]=argv[i+1];
+  }
+  return options;
+}
+
+function findApplet(override){
+  if(override) return path.resolve(override);
+  const users=path.join(process.env.APPDATA,'Tencent','xwechat','radium','users');
+  const found=fs.readdirSync(users).map(x=>path.join(users,x,'applet')).filter(x=>fs.existsSync(path.join(x,'local',APP,'usrmmkvstorage0',APP)));
+  if(found.length!==1) throw Error('Expected one matching WeChat account; select its applet directory with --applet (found '+found.length+').');
+  return found[0];
+}
+
+function bridge(options,request){
+  const result=cp.spawnSync(options.python,[path.join(__dirname,'read_only_memory.py')],{
+    input:JSON.stringify(request),encoding:'utf8',maxBuffer:32*1024*1024,windowsHide:true,timeout:120000
+  });
+  if(result.error) throw result.error;
+  let data;
+  try{data=JSON.parse(result.stdout);}catch{throw Error('Memory reader failed: '+result.stderr);}
+  if(result.status!==0||data.error) throw Error(data.error||'Memory reader failed');
+  return data.result;
+}
+
+function storageSnapshot(applet){
+  const file=path.join(applet,'local',APP,'usrmmkvstorage0',APP);
+  for(let attempt=0;attempt<5;attempt++){
+    const before=fs.readFileSync(file+'.crc'), data=fs.readFileSync(file), after=fs.readFileSync(file+'.crc');
+    if(before.length<32||after.length<32||data.length<4) throw Error('Truncated MMKV');
+    const size=data.readUInt32LE(0);
+    if(!before.subarray(0,32).equals(after.subarray(0,32))||size!==after.readUInt32LE(28)||size>data.length-4) continue;
+    const payload=data.subarray(4,4+size);
+    if(crc32(payload)!==after.readUInt32LE(0)) continue;
+    return {payload,iv:after.subarray(12,28),sequence:after.readUInt32LE(8),capturedAt:new Date().toISOString()};
+  }
+  throw Error('MMKV changed during read or failed CRC; retry later');
+}
+
+function decryptStorage(snapshot,key){
+  const cipher=crypto.createDecipheriv('aes-128-cfb',key,snapshot.iv);
+  const bytes=Buffer.concat([cipher.update(snapshot.payload),cipher.final()]);
+  if(!bytes.includes(Buffer.from('SAVE_KEY_BAG'))) throw Error('Wrong storage key');
+  const values=parseMMKV(bytes).values;
+  const decode=name=>values.has(name)?JSON.parse(unwrapValue(values.get(name)).data):null;
+  const bag=decode('SAVE_KEY_BAG');
+  if(!Array.isArray(bag)||!bag.length||!bag.every(x=>Array.isArray(x)&&Number.isInteger(x[0])&&Number.isInteger(x[1]))) throw Error('Invalid bag schema');
+  return {bag,common:decode('SAVE_KEY_COMMON')||{}};
+}
+
+function recoverStorage(options,snapshot,processes,hints){
+  // Cache only a validated address and process birth time, never key bytes.
+  const mains=processes.filter(p=>!processes.some(q=>q.pid===p.parent));
+  if(hints.key&&processes.some(p=>p.pid===hints.key.pid&&p.born===hints.key.born)){
+    try{
+      const candidate=bridge(options,{op:'keys',pid:hints.key.pid,addresses:[hints.key.address]})[0];
+      let key=Buffer.from(candidate.key,'hex');
+      if(hints.key.swap) key=Buffer.from(key).swap32();
+      return {state:decryptStorage(snapshot,key),hintUsed:true};
+    }catch{/* A moving/restarted runtime invalidates the hint; scan again. */}
+  }
+  for(const process of mains){
+    for(const candidate of bridge(options,{op:'keys',pid:process.pid})){
+      for(const swap of [false,true]){
+        try{
+          let key=Buffer.from(candidate.key,'hex');
+          if(swap) key=Buffer.from(key).swap32();
+          const state=decryptStorage(snapshot,key);
+          hints.key={pid:process.pid,born:process.born,address:candidate.address,swap};
+          return {state,hintUsed:false};
+        }catch{/* Candidate must decrypt and validate this exact MMKV snapshot. */}
+      }
+    }
+  }
+  throw Error('No validated MMKV key in running WeChatAppEx; open the mini program and retry.');
+}
+
+function unpack(file){
+  const b=fs.readFileSync(file);
+  let buf=b;
+  if(b.subarray(0,6).toString()==='V1MMWX'){
+    const cipher=crypto.createDecipheriv('aes-256-cbc',crypto.pbkdf2Sync(APP,'saltiest',1000,32,'sha1'),Buffer.from('the iv: 16 bytes'));
+    cipher.setAutoPadding(false);
+    const head=Buffer.concat([cipher.update(b.subarray(6,1030)),cipher.final()]).subarray(0,1023);
+    const tail=Buffer.from(b.subarray(1030));
+    for(let i=0;i<tail.length;i++) tail[i]^=APP.charCodeAt(APP.length-2);
+    buf=Buffer.concat([head,tail]);
+  }
+  if(buf[0]!==0xbe||buf[13]!==0xed) throw Error('Unsupported wxapkg header');
+  let at=18;
+  const files=new Map();
+  for(let i=0,n=buf.readUInt32BE(14);i<n;i++){
+    const length=buf.readUInt32BE(at);at+=4;
+    const name=buf.toString('utf8',at,at+length);at+=length;
+    const offset=buf.readUInt32BE(at),size=buf.readUInt32BE(at+4);at+=8;
+    if(offset+size>buf.length) throw Error('Invalid package index');
+    files.set(name,buf.subarray(offset,offset+size));
+  }
+  return files;
+}
+
+function configuration(applet){
+  const folder=path.join(applet,'packages',APP);
+  const versions=fs.readdirSync(folder).filter(x=>/^\d+$/.test(x)).sort((a,b)=>Number(b)-Number(a));
+  const version=versions.find(x=>fs.existsSync(path.join(folder,x,'_subpackages_subpkg_.wxapkg')));
+  if(!version) throw Error('No cached configuration package');
+  const tables=new Map();
+  for(const [name,bytes] of unpack(path.join(folder,version,'_subpackages_subpkg_.wxapkg'))){
+    if(!name.includes('/import/')||!name.endsWith('.json')) continue;
+    let asset;try{asset=JSON.parse(bytes);}catch{continue;}
+    if(!Array.isArray(asset[5])) continue;
+    for(const row of asset[5]){
+      if(!Array.isArray(row)||!String(row[1]).startsWith('cfg_')||!Array.isArray(row[2]?.key)) continue;
+      const [headers,...rows]=row[2].key;
+      tables.set(row[1],rows.map(values=>Object.fromEntries(headers.map((key,i)=>[key,values[i]]))));
+    }
+  }
+  const items=new Map((tables.get('cfg_items')||[]).map(x=>[x.id,x]));
+  const language=new Map((tables.get('cfg_language_cn')||[]).map(x=>[x.key,x.value]));
+  const tasks=new Map((tables.get('cfg_task')||[]).filter(x=>x.type===121).map(x=>[x.item_id,x]));
+  const bellRewards=new Map();
+  for(const row of tables.get('cfg_drop_box')||[]){
+    if(row.item_id!==3638) continue;
+    if(!bellRewards.has(row.box_id)) bellRewards.set(row.box_id,[]);
+    bellRewards.get(row.box_id).push(row);
+  }
+  if(items.size<1000||tasks.size<90) throw Error('Incomplete game configuration');
+  const name=id=>language.get(items.get(id)?.name)||items.get(id)?.name||'#'+id;
+  const orderLevels=new Map((tables.get('cfg_level')||[]).filter(x=>x.type===4).map(x=>[x.item_id+':'+x.level,x]));
+  const outputs=new Map((tables.get('cfg_output')||[]).map(x=>[x.id,x]));
+  const prices=tables.get('cfg_price')||[];
+  const playerLevels=(tables.get('cfg_level')||[]).filter(x=>x.type===0&&x.item_id===0).sort((a,b)=>a.level-b.level);
+  return {version,items,language,tasks,bellRewards,orderLevels,outputs,prices,playerLevels,name};
+}
+
+function itemAmounts(raw,config){
+  if(!raw) return [];
+  return String(raw).split('#').filter(Boolean).map(part=>{
+    const [itemId,count]=part.split('_').map(Number);
+    if(!Number.isFinite(itemId)||!Number.isFinite(count)) throw Error('Invalid item amount: '+part);
+    return {itemId,name:config.name(itemId),count};
+  });
+}
+
+function flatItemAmounts(raw,config){
+  if(!raw) return [];
+  const values=String(raw).split('_').map(Number);
+  if(values.length%2||values.some(x=>!Number.isFinite(x))) throw Error('Invalid employee item-pair list');
+  const result=[];
+  for(let i=0;i<values.length;i+=2) result.push({itemId:values[i],name:config.name(values[i]),count:values[i+1]});
+  return result;
+}
+
+function inventoryOf(bag,config,now){
+  const totals=new Map();
+  const records=bag.filter(x=>!x[4]||x[4]>=now).map(([uid,itemId,count,extra,expiresAt])=>{
+    const item=config.items.get(itemId);
+    if(!item) throw Error('Unknown item configuration: '+itemId);
+    if(PRODUCT_TYPES.has(item.item_type)) totals.set(itemId,(totals.get(itemId)||0)+count);
+    return {uid,itemId,name:config.name(itemId),type:item.item_type,count,extra:extraOf(extra),expiresAt:expiresAt||null};
+  });
+  return {recordCount:records.length,products:[...totals].map(([itemId,count])=>({itemId,name:config.name(itemId),count})),records};
+}
+
+function ordersOf(bag,config,inventory){
+  const stock=new Map(inventory.products.map(x=>[x.itemId,x.count]));
+  return [{id:1837,category:'normal'},{id:101,category:'party'},{id:102,category:'takeout'}].flatMap(({id,category})=>
+    bag.filter(x=>x[1]===id).sort((a,b)=>a[0]-b[0]).map((x,i)=>{
+      const extra=extraOf(x[3]),data=String(extra.order_data||'').split('_').map(Number);
+      const costs=itemAmounts(extra.cts,config).map(cost=>({...cost,stock:stock.get(cost.itemId)||0,shortfall:Math.max(0,cost.count-(stock.get(cost.itemId)||0))}));
+      const levelConfig=config.orderLevels?.get(id+':'+data[2]);
+      const menuLevel=levelConfig?(Number(extraOf(levelConfig.params).menu_lv)||1):null;
+      const menus=data.slice(4).map(itemId=>{const record=bag.find(x=>x[1]===itemId);return {itemId,unlocked:!!record,level:record?(Number(extraOf(record[3]).lv)||1):null};});
+      return {category,slot:i+1,uid:x[0],statusCode:Number(extra.status),status:({1:'waiting',2:'doing',3:'success',4:'refresh',5:'fail',88:'client_refresh',99:'client_doing'})[extra.status]||'unknown',
+        costs,rewards:itemAmounts(extra.rws,config),materialsSufficient:costs.length>0&&costs.every(x=>!x.shortfall),
+        rareType:data[0],requiredStaff:data[1]||null,requiredLevel:data[2],guestCount:data[3],menuIds:data.slice(4),refreshAt:Number(extra.r_time)||null,
+        menuEligibility:{requiredMenuLevel:menuLevel,menus,unlocked:menus.length>0&&menus.every(x=>x.unlocked),
+          levelSufficient:menuLevel===null?null:data[0]===3||menus.every(x=>x.level!==null&&x.level>=menuLevel)}};
+    }));
+}
+
+function employeesOf(bag,common,config){
+  const buildings=new Set([12,284,285,17,723,28,286,32,878]);
+  const byUid=new Map(bag.map(x=>[x[0],x]));
+  return {repeatEnabled:Number(common['38'])===1,plans:bag.filter(x=>buildings.has(x[1])).map(x=>{
+    const extra=extraOf(x[3]);
+    const employees=String(extra.equip_ids||'').split('_').filter(Boolean).map(Number).map(uid=>{
+      const staff=byUid.get(uid);if(!staff) return {uid,available:false};
+      const detail=extraOf(staff[3]);
+      return {uid,itemId:staff[1],name:config.name(staff[1]),level:Number(detail.lv)||1};
+    });
+    return {buildingUid:x[0],buildingItemId:x[1],buildingName:config.name(x[1]),employees,
+      targets:flatItemAmounts(extra.ae_items,config),accumulated:flatItemAmounts(extra.g_items,config),
+      heldProducts:itemAmounts(extra.col_m,config).filter(x=>PRODUCT_TYPES.has(config.items.get(x.itemId)?.item_type)),
+      productionOperations:extra.ops||null,refreshAt:Number(extra.r_time)||null,extra};
+  })};
+}
+
+function taskDescription(id,config){
+  const task=config.tasks.get(id),item=config.items.get(id);
+  if(!task||!item) throw Error('Unknown family task: '+id);
+  const description=config.language.get(item.desc)||item.desc||'';
+  const args=task.check_condi.split(',').slice(1).map(Number),values=args.map(String);
+  if(description.startsWith('安排')) values[0]=config.name(args[0]);
+  if(description.includes('收获')) values[1]=config.name(args[1]);
+  const text=description.replace(/%\[(\d+)\]/g,(_,n)=>values[Number(n)-1]??'未知').replace(/\n/g,'；');
+  if(!text||text.includes('未知')||text.includes('%[')) throw Error('Unresolved task description: '+id);
+  const rewards=config.bellRewards?.get(task.reward_box_id)||[];
+  if(rewards.length!==1||rewards[0].item_num_min!==rewards[0].item_num_max||rewards[0].drop_rate!==10000||rewards[0].drop_type!==1)
+    throw Error('Missing or non-fixed family bell reward: '+id);
+  const params=extraOf(item.params);
+  return {text,condition:task.check_condi,target:description.startsWith('完成')?args[1]:args[2],
+    durationSeconds:Number(params.expire_cd)||null,quality:item.quality,
+    isRare:item.quality>0,rarity:item.quality>0?'rare':'normal',
+    isUpgraded:Number(params.mutation_ref_id)>0,rewardBoxId:task.reward_box_id,
+    bellReward:{itemId:3638,name:'铃铛',count:rewards[0].item_num_min,source:'task_configuration'}};
+}
+
+function progressOf(extra,personal,target){
+  const source=personal?extraOf(personal[3]):extra;
+  const checks=String(source.tk_c||'').split('#').filter(Boolean).map(x=>x.split('_').map(Number));
+  return {current:checks.length===1?checks[0][1]:null,target,available:checks.length===1,
+    source:personal?'personal_bag':checks.length?'shared_cache':'not_provided',checks};
+}
+
+function familyFromRecords(records,bag,config,now){
+  const members=new Map(),slots=new Map();
+  for(const record of records.filter(x=>x.itemId===3629)){
+    const profile=Object.fromEntries(String(extraOf(record.extra).plrd||'').split('@').map(x=>{const i=x.indexOf(':');return [x.slice(0,i),x.slice(i+1)];}));
+    if(profile['1']&&profile['4']) members.set(Number(profile['1']),profile['4']);
+  }
+  for(const record of records.filter(x=>x.itemId===3931)){
+    const extra=extraOf(record.extra),slot=Number(extra.idx);
+    if(!(slot>=1&&slot<=90)||!config.tasks.has(Number(extra.r_id))) continue;
+    const previous=slots.get(slot);
+    if(previous&&(previous.uid!==record.uid||JSON.stringify(previous.extra)!==JSON.stringify(extra)))
+      throw Error('Conflicting cached versions of task slot '+slot+'; cannot safely choose a current value.');
+    slots.set(slot,{...record,extra});
+  }
+  if(slots.size!==90) throw Error('Incomplete shared board: '+slots.size+'/90 slots. Open the shared task board and retry.');
+  const member=uid=>uid?{uid,name:members.get(uid)||null}:null;
+  const tasks=[...slots].sort((a,b)=>a[0]-b[0]).map(([slot,record])=>{
+    const extra=record.extra,taskId=Number(extra.r_id),definition=taskDescription(taskId,config);
+    const acceptorUid=Number(extra.lock)||0,upgraderUid=Number(extra.exp)||0,deadline=Number(extra.e_time)||null;
+    const personal=bag.find(x=>config.items.get(x[1])?.item_type===13&&Number(extraOf(x[3]).r_id)===record.uid);
+    const rewardOverride=personal?extraOf(personal[3]).rws:extra.rws;
+    if(rewardOverride){
+      const bell=itemAmounts(rewardOverride,config).find(x=>x.itemId===3638);
+      if(bell) definition.bellReward={itemId:3638,name:'铃铛',count:bell.count,source:personal?'personal_bag':'shared_cache'};
+    }
+    return {slot,uid:record.uid,taskItemId:taskId,...definition,
+      status:acceptorUid?'occupied':Number(extra.r_time)>now?'cooling_down':'unclaimed',
+      acceptor:member(acceptorUid),upgrader:member(upgraderUid),upgradeCount:Number(extra.sp_c)||0,
+      progress:progressOf(extra,personal,definition.target),deadlineUnix:deadline,
+      deadline:deadline?new Date(deadline*1000).toISOString():null,deadlinePassed:deadline?deadline<now:null,
+      refreshUnix:Number(extra.r_time)||null,personalStatusCode:personal?Number(extraOf(personal[3]).status):null};
+  });
+  for(const task of tasks){
+    if((task.acceptor&&!task.acceptor.name)||(task.upgrader&&!task.upgrader.name)) throw Error('Family member names are incomplete; reopen the board and retry.');
+  }
+  return {slotCount:tasks.length,occupiedCount:tasks.filter(x=>x.status==='occupied').length,
+    rareCount:tasks.filter(x=>x.isRare).length,upgradedCount:tasks.filter(x=>x.isUpgraded).length,tasks};
+}
+
+function familyOf(options,processes,hints,bag,config,now){
+  const ordered=[...processes].sort((a,b)=>Number(b.pid===hints.game?.pid)-Number(a.pid===hints.game?.pid)||b.workingSet-a.workingSet);
+  let incomplete;
+  for(const process of ordered){
+    // Always rescan records: old heap objects can remain readable after the board changes.
+    const result=bridge(options,{op:'records',pid:process.pid});
+    if(!result.records.some(x=>x.itemId===3931)) continue;
+    let board;
+    try{board=familyFromRecords(result.records,bag,config,now);}
+    catch(error){
+      if(!error.message.startsWith('Incomplete shared board:')) throw error;
+      incomplete=error;
+      continue;
+    }
+    hints.game={pid:process.pid,born:process.born};
+    return board;
+  }
+  throw incomplete||Error('No readable family board in running WeChatAppEx; open the shared task board first.');
+}
+
+function main(){
+  const started=performance.now(),options=argumentsOf(process.argv.slice(2)),timings={};
+  function stage(name,fn){const start=performance.now();const value=fn();timings[name]=+(performance.now()-start).toFixed(2);return value;}
+  const applet=findApplet(options.applet),hintFile=path.join(ROOT,'.tmp','read_only_decoder','hints.json');
+  let hints={};try{hints=JSON.parse(fs.readFileSync(hintFile));}catch{}
+  if(hints.applet!==applet) hints={applet};
+  const processes=stage('processDiscoveryMs',()=>bridge(options,{op:'processes'}));
+  const snapshot=stage('storageSnapshotMs',()=>storageSnapshot(applet));
+  const {state,hintUsed}=stage('keyAndStorageDecodeMs',()=>recoverStorage(options,snapshot,processes,hints));
+  const config=stage('configurationMs',()=>configuration(applet));
+  const now=Math.floor(Date.now()/1000),data={};
+  const inventory=stage('inventoryMs',()=>inventoryOf(state.bag,config,now));
+  if(['inventory','automation','all'].includes(options.mode)) data.inventory=inventory;
+  if(['orders','automation','all'].includes(options.mode)) data.orders=stage('ordersMs',()=>ordersOf(state.bag,config,inventory));
+  if(['employees','automation','all'].includes(options.mode)) data.employees=stage('employeesMs',()=>employeesOf(state.bag,state.common,config));
+  if(['production','automation','all'].includes(options.mode)) data.production=stage('productionMs',()=>productionOf(inventory,config,now,state.common));
+  if(['family','all'].includes(options.mode)) data.family=stage('familyMs',()=>familyOf(options,processes,hints,state.bag,config,now));
+  fs.mkdirSync(path.dirname(hintFile),{recursive:true});
+  fs.writeFileSync(hintFile,JSON.stringify(hints,null,2));
+  timings.totalMs=+(performance.now()-started).toFixed(2);
+  const report={schemaVersion:1,mode:options.mode,readOnly:true,capturedAt:snapshot.capturedAt,completedAt:new Date().toISOString(),
+    source:'local_client_cache',packageVersion:config.version,storageSequence:snapshot.sequence,keyAddressHintUsed:hintUsed,
+    timings,notes:['Client cache snapshot; server state may have changed.','Occupied tasks can omit shared progress; null does not mean zero.','No game operation, network request, process write, or key persistence.'],...data};
+  const json=JSON.stringify(report,null,2)+'\n';
+  if(options.output){const output=path.resolve(options.output);fs.mkdirSync(path.dirname(output),{recursive:true});fs.writeFileSync(output,json);}
+  else process.stdout.write(json);
+  process.stderr.write(JSON.stringify({mode:options.mode,timings,output:options.output||'stdout'})+'\n');
+}
+
+module.exports={readv,crc32,parseMMKV,unwrapValue,extraOf,progressOf,familyFromRecords,inventoryOf,ordersOf,employeesOf};
+if(require.main===module){try{main();}catch(error){process.stderr.write(JSON.stringify({error:error.message,readOnly:true})+'\n');process.exitCode=1;}}

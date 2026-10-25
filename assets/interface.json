@@ -1,109 +1,1408 @@
 {
-    // 本文件主要定义了通用 UI 的行为和显示内容
-    // 可参考文档和示例添加更多您需要的功能
-    // 文档：https://maafw.xyz/docs/3.3-ProjectInterfaceV2
-    // 示例：https://github.com/MaaXYZ/MaaFramework/blob/main/sample/interface.json
     "interface_version": 2,
-    "name": "MaaXXX",
-    "description": "这是一个使用 MaaFramework 创建的新项目。",
-    "contact": "QQ群: 123456789",
+    "name": "萝卜家园2",
+    "description": "胡萝卜庄园2 后台自动化。勾选日常：聚会/外卖/普通订单；另有导航原子与单订单短循环。批次与冷却内置，不在界面展示。",
     "license": "MIT",
-    "welcome": "首次使用！欢迎使用 MAA!",
-    // 填写项目地址和版本号可实现自动更新功能
-    "github": "https://github.com/MaaXYZ/MaaPracticeBoilerplate",
-    "version": "1.0.0",
-    // Mirror酱为第三方分发服务，新项目默认关闭
-    // 若有需要请联系 Mirror酱 开通，直接自行开启是无法使用的
-    // "mirrorchyan_rid": "MaaXXX",
-    // "mirrorchyan_multiplatform": true,
+    "welcome": "默认运行「聚会与外卖订单（自动调度）」：先做可用批次，两类都冷却时才等待，各日12次。也可单独勾选聚会或外卖，冷却时让出队列。普通订单没有每日上限，当前单独入口每次处理一单，长期循环待后续开发。游戏勿最小化。监控预览：左上角。",
+    "github": "https://github.com/Myoossootis/Maa-CarrotFarm2",
+    "version": "0.6.4",
+    "agent": {
+        "child_exec": "python",
+        "child_args": [
+            "-u",
+            "../agent/main.py"
+        ]
+    },
     "controller": [
         {
-            "name": "安卓端",
-            "type": "Adb",
-            "display_short_side": 720 // 默认缩放分辨率的短边长度
-        },
-        {
-            "name": "桌面端",
+            "name": "萝卜家园2（Win32）",
             "type": "Win32",
+            "display_short_side": 720,
             "win32": {
-                "class_regex": ".*",
-                "window_regex": "Visual Studio",
-                // 截图及控制方式，请根据项目实际情况修改
-                // 文档: https://maafw.xyz/docs/2.4-ControlMethods
-                "screencap": "PrintWindow", // 截图方式
-                "mouse": "PostMessageWithCursorPos", // 鼠标控制方式
-                "keyboard": "PostMessageWithCursorPos" // 键盘控制方式
+                "class_regex": "^Chrome_WidgetWin_0$",
+                "window_regex": "^萝卜家园2$",
+                "screencap": "FramePool",
+                "mouse": "PostMessage",
+                "keyboard": "PostMessage"
             }
         }
     ],
     "resource": [
         {
-            "name": "官服",
+            "name": "默认",
             "path": [
                 "./resource"
-            ]
-        },
-        {
-            "name": "B 服",
-            "path": [
-                "./resource"
-                // "./resource_bilibili"
             ]
         }
     ],
-    // 可选的 agent 示例
-    // "agent": {
-    //     "child_exec": "python",
-    //     "child_args": [
-    //         "./agent/main.py"
-    //     ]
-    // },
     "task": [
         {
-            "name": "普通任务",
-            "entry": "MyTask1"
+            "name": "手动种植（单次）",
+            "entry": "ManualPlantingOnce",
+            "default_check": false,
+            "description": "按所选农田、作物和格数种植一次，逐格发送输入并等待解码确认；保留操作前后检查和落盘防重复记录。定位未校准、余额未知、状态变化或结果未确认即停止，不补点、不收获、不启动连续循环。农田1/2/3均已接入定位映射，自动匹配标准和验收时的地图缩放；只使用解码确认的已拥有空位，画面不匹配则停止。",
+            "option": ["手动种植农田", "手动种植作物", "手动种植数量"]
         },
         {
-            "name": "选项任务",
-            "entry": "MyTask2",
+            "name": "手动种植（只读预检）",
+            "entry": "ManualPlantingPreflight",
+            "default_check": false,
+            "description": "选择农田、普通作物和格数，解码检查空位、员工争用、等级和预计消耗，打开数据窗口显示结果。本入口只预检，不点击、不种植、不清地、不循环；预检通过也不执行。",
+            "option": ["手动种植农田", "手动种植作物", "手动种植数量"]
+        },
+        {
+            "name": "解码数据窗口（只读）",
+            "entry": "OpenDecodedDashboard",
+            "default_check": false,
+            "description": "打开库存、订单、员工计划、90个狮王任务的数据窗口。显示单次和选定次数的材料需求；可手动只读刷新，不点击或修改游戏。"
+        },
+        {
+            "name": "Agent连接检查（不点击游戏）",
+            "entry": "RuntimePreflight",
+            "default_check": true,
+            "description": "验证 UI→Agent 通信和 Python MaaFw 版本；不发送游戏输入。建议每次启动先勾选。"
+        },
+        {
+            "name": "聚会与外卖订单（自动调度）",
+            "entry": "RunDailyBatchOrders",
+            "default_check": true,
+            "description": "启动先检查一号位：含未勾选品类或菜品等级太低时，更换并免费加速至合规。先聚会、再外卖；两类都冷却时才等待。各日12次。单类失败记录日志并继续检查另一类。",
+            "controller": [
+                "萝卜家园2（Win32）"
+            ],
             "option": [
-                "任务选项1"
+                "一号位允许品类"
             ]
         },
         {
-            "name": "参数任务",
-            "entry": "MyTask3",
-            "option": [
-                "任务选项1"
+            "name": "聚会订单",
+            "entry": "RunDailyPartyOrders",
+            "default_check": false,
+            "description": "启动先检查一号位：含未勾选品类或菜品等级太低时，更换并免费加速至合规。单独执行这一类订单；各日12次，完成6次后冷却1小时。冷却时记录下次时间并让出队列。自动轮换请勾「聚会与外卖订单（自动调度）」。",
+            "controller": [
+                "萝卜家园2（Win32）"
             ],
-            "pipeline_override": {}
+            "option": [
+                "一号位允许品类"
+            ]
         },
         {
-            "name": "带Custom的任务",
-            "entry": "MyTask4"
+            "name": "外卖订单",
+            "entry": "RunDailyTakeoutOrders",
+            "default_check": false,
+            "description": "启动先检查一号位：含未勾选品类或菜品等级太低时，更换并免费加速至合规。单独执行这一类订单；各日12次，完成6次后冷却1小时。冷却时记录下次时间并让出队列。自动轮换请勾「聚会与外卖订单（自动调度）」。",
+            "controller": [
+                "萝卜家园2（Win32）"
+            ],
+            "option": [
+                "一号位允许品类"
+            ]
+        },
+        {
+            "name": "普通订单",
+            "entry": "RunDailyNormalOrders",
+            "default_check": false,
+            "description": "启动先检查一号位：含未勾选品类或菜品等级太低时，更换并免费加速至合规。普通订单没有每日限额。当前入口每次处理一单；长期循环待后续开发。",
+            "controller": [
+                "萝卜家园2（Win32）"
+            ],
+            "option": [
+                "一号位允许品类"
+            ]
+        },
+        {
+            "name": "刷新指定订单",
+            "entry": "RefreshOrder",
+            "default_check": false,
+            "description": "更换指定的一张订单并点击免费加速，立即生成新订单。位置按从左到右、从上到下编号1–9；会确认稀有订单更换。目标已在刷新时直接免费加速。",
+            "controller": [
+                "萝卜家园2（Win32）"
+            ],
+            "option": [
+                "刷新订单类型",
+                "刷新订单位置"
+            ]
+        },
+        {
+            "name": "关闭离线收益面板（不排产）",
+            "entry": "CloseOfflineIncome",
+            "default_check": false,
+            "description": "OCR 确认餐厅离线收益后点空白继续；两帧确认消失。不点领取、不排产。日常开局常用。",
+            "controller": [
+                "萝卜家园2（Win32）"
+            ]
+        },
+        {
+            "name": "预览：单订单扫描与排产计划",
+            "entry": "RunShortCyclePreview",
+            "default_check": false,
+            "description": "只预览：扫描订单、生成排产计划，不改游戏、不清地确认。鱼肉整单跳过；最多看前三单，找到首张非鱼肉后停止。看完计划再用正式任务。",
+            "controller": [
+                "萝卜家园2（Win32）"
+            ],
+            "option": [
+                "周期参数"
+            ]
+        },
+        {
+            "name": "正式：单订单补产交单",
+            "entry": "RunShortCycleApply",
+            "default_check": false,
+            "description": "正式执行：确认清地后补产→监控领取→交单。每轮一单；能力未验证/容量不足/状态不明即停，保留已保存计划。整链实机验收仍以最新 TRACK_B 为准。",
+            "controller": [
+                "萝卜家园2（Win32）"
+            ],
+            "option": [
+                "周期参数"
+            ]
+        },
+        {
+            "name": "单订单补产与交单（高级）",
+            "entry": "RunShortCycle",
+            "default_check": false,
+            "description": "默认勾选。推荐组合：本任务勾选 + 周期运行模式=正式执行 + 周期参数 rounds=1 / poll=20 / timeout=900。仅预览不连游戏；正式执行走扫单→补产→监控领取→交单。每轮只处理一单：最多检查前三个位置，鱼肉整单跳过，找到首个非鱼肉订单后停止扫描。只补这一单的缺口，分配给能力已验证的空闲员工；一次性计划保存后复核，达标才领取。未知能力/容量不足/状态不明即停止，保留已保存计划。点击均为前台安全 PostMessage。",
+            "controller": [
+                "萝卜家园2（Win32）"
+            ],
+            "option": [
+                "周期运行模式",
+                "周期参数"
+            ]
+        },
+        {
+            "name": "进入餐厅（不接单）",
+            "entry": "EnterRestaurantBackground",
+            "default_check": false,
+            "description": "模板识别左下角锅盖入口，后台点一次；连续两帧出现返回农场且锅盖消失才算成功。已在餐厅不点，不打开告示牌、不接单。",
+            "controller": [
+                "萝卜家园2（Win32）"
+            ]
+        },
+        {
+            "name": "返回农场（不排产）",
+            "entry": "EnterFarmBackground",
+            "default_check": false,
+            "description": "模板识别左下角农场入口，后台点一次；连续两帧出现锅盖且农场入口消失才算成功。已在农场不点，不排产。",
+            "controller": [
+                "萝卜家园2（Win32）"
+            ]
+        },
+        {
+            "name": "点击手机（不进入配置）",
+            "entry": "OpenPhoneBackground",
+            "default_check": false,
+            "description": "识别农场右下角手机并后台点一次；连续两帧出现手机菜单才算成功。菜单已开不点，不进员工配置。",
+            "controller": [
+                "萝卜家园2（Win32）"
+            ]
+        },
+        {
+            "name": "打开员工配置（不排产）",
+            "entry": "OpenEmployeeConfigBackground",
+            "default_check": false,
+            "description": "识别手机菜单中的员工配置并后台点一次；连续两帧出现帽子标签才算成功。不选员工、不排产。",
+            "controller": [
+                "萝卜家园2（Win32）"
+            ]
+        },
+        {
+            "name": "选择农场就职（不排产）",
+            "entry": "SelectFarmEmploymentBackground",
+            "default_check": false,
+            "description": "橙色农场帽子连续两帧即成功；仅灰帽时后台点一次并确认变橙。不选员工、不排产。",
+            "controller": [
+                "萝卜家园2（Win32）"
+            ]
+        },
+        {
+            "name": "打开农田1岗位详情（不排产）",
+            "entry": "OpenFieldDetailBackground",
+            "default_check": false,
+            "description": "仅在严格识别员工列表且农田1可安排时点一次上阵员工；连续两帧识别岗位详情后停止。",
+            "controller": [
+                "萝卜家园2（Win32）"
+            ]
+        },
+        {
+            "name": "返回员工列表（不排产）",
+            "entry": "ReturnEmployeeListBackground",
+            "default_check": false,
+            "description": "从岗位详情点一次返回；若空计划提示仅点取消一次，再连续两帧确认列表。已在列表时 0 点击。",
+            "controller": [
+                "萝卜家园2（Win32）"
+            ]
+        },
+        {
+            "name": "定位农田2岗位（不打开）",
+            "entry": "LocateField2Background",
+            "default_check": false,
+            "description": "从员工列表定位农田2及其当前动作，不打开岗位、不排产；必要时仅后台滚动。",
+            "controller": [
+                "萝卜家园2（Win32）"
+            ]
+        },
+        {
+            "name": "打开工作计划（不修改）",
+            "entry": "OpenWorkPlanBackground",
+            "default_check": false,
+            "description": "从员工列表点农田1左侧蓝色工作计划一次；连续两帧确认弹窗，不点绿色上阵。",
+            "controller": [
+                "萝卜家园2（Win32）"
+            ]
+        },
+        {
+            "name": "关闭工作计划（不保存）",
+            "entry": "CloseWorkPlanBackground",
+            "default_check": false,
+            "description": "从工作计划弹窗点空白一次；连续两帧确认回到员工列表。",
+            "controller": [
+                "萝卜家园2（Win32）"
+            ]
+        },
+        {
+            "name": "验证农田2工作计划（打开后关闭）",
+            "entry": "VerifyField2WorkPlanBackground",
+            "default_check": false,
+            "description": "必要时滑动定位农田2，开蓝钮工作计划后空白关闭，确认回列表。不改计划。",
+            "controller": [
+                "萝卜家园2（Win32）"
+            ]
+        },
+        {
+            "name": "验证农田3工作计划（打开后关闭）",
+            "entry": "VerifyField3WorkPlanBackground",
+            "default_check": false,
+            "description": "滑动定位农田3，开蓝钮工作计划后空白关闭，确认回列表。不改计划。",
+            "controller": [
+                "萝卜家园2（Win32）"
+            ]
+        },
+        {
+            "name": "验证牧场1工作计划（打开后关闭）",
+            "entry": "VerifyRanch1WorkPlanBackground",
+            "default_check": false,
+            "description": "滑动定位牧场1，开蓝钮工作计划后空白关闭，确认回列表。不改计划。",
+            "controller": [
+                "萝卜家园2（Win32）"
+            ]
+        },
+        {
+            "name": "验证牧场2工作计划（打开后关闭）",
+            "entry": "VerifyRanch2WorkPlanBackground",
+            "default_check": false,
+            "description": "滑动定位牧场2，开蓝钮工作计划后空白关闭，确认回列表。不改计划。",
+            "controller": [
+                "萝卜家园2（Win32）"
+            ]
+        },
+        {
+            "name": "验证果园1工作计划（打开后关闭）",
+            "entry": "VerifyOrchard1WorkPlanBackground",
+            "default_check": false,
+            "description": "滑动定位果园1，开蓝钮工作计划后空白关闭，确认回列表。不改计划。",
+            "controller": [
+                "萝卜家园2（Win32）"
+            ]
+        },
+        {
+            "name": "验证果园2工作计划（打开后关闭）",
+            "entry": "VerifyOrchard2WorkPlanBackground",
+            "default_check": false,
+            "description": "滑动定位果园2，开蓝钮工作计划后空白关闭，确认回列表。不改计划。",
+            "controller": [
+                "萝卜家园2（Win32）"
+            ]
+        },
+        {
+            "name": "Win32 连接测试",
+            "entry": "Win32ConnectionTest",
+            "default_check": false,
+            "description": "截一张 FramePool 图，确认能挂上萝卜家园2窗口。",
+            "controller": [
+                "萝卜家园2（Win32）"
+            ]
+        },
+        {
+            "name": "识别右上角时间",
+            "entry": "RecognizeClockStart",
+            "default_check": false,
+            "description": "OCR 识别农场页右上角 HH:MM。",
+            "controller": [
+                "萝卜家园2（Win32）"
+            ]
+        },
+        {
+            "name": "饲料生产循环（农田3）",
+            "entry": "RunFeedProduction",
+            "default_check": false,
+            "description": "独占农田3：玉米20、甘蔗16、土豆12，一次性计划。红皮土豆按1:1并入土豆完成量，不另行补产；三项全部达标才领取→磨坊一键补满补货。定期领取磨坊员工饲料。背包达到上限暂停，下降后恢复。请放队列最后，持续运行直到点击停止。上限为暂停阈值，整批领取可能略超；已有生产继续完成。",
+            "controller": [
+                "萝卜家园2（Win32）"
+            ],
+            "option": [
+                "饲料循环设置"
+            ]
         }
     ],
     "option": {
-        "任务选项1": {
+        "手动种植农田": {
             "type": "select",
+            "default_case": "农田1",
             "cases": [
                 {
-                    "name": "文本1",
+                    "name": "农田1",
                     "pipeline_override": {
-                        "OcrTask": {
-                            "text": "文本1"
+                        "ManualPlantingPreflight": {
+                            "attach": {
+                                "manual_field_id": "field_1"
+                            }
+                        },
+                        "ManualPlantingOnce": {
+                            "attach": {
+                                "manual_field_id": "field_1"
+                            }
                         }
                     }
                 },
                 {
-                    "name": "文本2",
+                    "name": "农田2",
                     "pipeline_override": {
-                        "OcrTask": {
-                            "text": "文本2"
+                        "ManualPlantingPreflight": {
+                            "attach": {
+                                "manual_field_id": "field_2"
+                            }
+                        },
+                        "ManualPlantingOnce": {
+                            "attach": {
+                                "manual_field_id": "field_2"
+                            }
+                        }
+                    }
+                },
+                {
+                    "name": "农田3",
+                    "pipeline_override": {
+                        "ManualPlantingPreflight": {
+                            "attach": {
+                                "manual_field_id": "field_3"
+                            }
+                        },
+                        "ManualPlantingOnce": {
+                            "attach": {
+                                "manual_field_id": "field_3"
+                            }
                         }
                     }
                 }
             ]
+        },
+        "手动种植作物": {
+            "type": "select",
+            "default_case": "番茄",
+            "cases": [
+                {
+                    "name": "番茄",
+                    "pipeline_override": {
+                        "ManualPlantingPreflight": {
+                            "attach": {
+                                "manual_crop_item_id": 14
+                            }
+                        },
+                        "ManualPlantingOnce": {
+                            "attach": {
+                                "manual_crop_item_id": 14
+                            }
+                        }
+                    }
+                },
+                {
+                    "name": "小麦",
+                    "pipeline_override": {
+                        "ManualPlantingPreflight": {
+                            "attach": {
+                                "manual_crop_item_id": 154
+                            }
+                        },
+                        "ManualPlantingOnce": {
+                            "attach": {
+                                "manual_crop_item_id": 154
+                            }
+                        }
+                    }
+                },
+                {
+                    "name": "玉米",
+                    "pipeline_override": {
+                        "ManualPlantingPreflight": {
+                            "attach": {
+                                "manual_crop_item_id": 155
+                            }
+                        },
+                        "ManualPlantingOnce": {
+                            "attach": {
+                                "manual_crop_item_id": 155
+                            }
+                        }
+                    }
+                },
+                {
+                    "name": "甘蔗",
+                    "pipeline_override": {
+                        "ManualPlantingPreflight": {
+                            "attach": {
+                                "manual_crop_item_id": 157
+                            }
+                        },
+                        "ManualPlantingOnce": {
+                            "attach": {
+                                "manual_crop_item_id": 157
+                            }
+                        }
+                    }
+                },
+                {
+                    "name": "土豆",
+                    "pipeline_override": {
+                        "ManualPlantingPreflight": {
+                            "attach": {
+                                "manual_crop_item_id": 156
+                            }
+                        },
+                        "ManualPlantingOnce": {
+                            "attach": {
+                                "manual_crop_item_id": 156
+                            }
+                        }
+                    }
+                },
+                {
+                    "name": "玫瑰",
+                    "pipeline_override": {
+                        "ManualPlantingPreflight": {
+                            "attach": {
+                                "manual_crop_item_id": 158
+                            }
+                        },
+                        "ManualPlantingOnce": {
+                            "attach": {
+                                "manual_crop_item_id": 158
+                            }
+                        }
+                    }
+                },
+                {
+                    "name": "胡萝卜",
+                    "pipeline_override": {
+                        "ManualPlantingPreflight": {
+                            "attach": {
+                                "manual_crop_item_id": 159
+                            }
+                        },
+                        "ManualPlantingOnce": {
+                            "attach": {
+                                "manual_crop_item_id": 159
+                            }
+                        }
+                    }
+                },
+                {
+                    "name": "草莓",
+                    "pipeline_override": {
+                        "ManualPlantingPreflight": {
+                            "attach": {
+                                "manual_crop_item_id": 160
+                            }
+                        },
+                        "ManualPlantingOnce": {
+                            "attach": {
+                                "manual_crop_item_id": 160
+                            }
+                        }
+                    }
+                },
+                {
+                    "name": "白菜",
+                    "pipeline_override": {
+                        "ManualPlantingPreflight": {
+                            "attach": {
+                                "manual_crop_item_id": 161
+                            }
+                        },
+                        "ManualPlantingOnce": {
+                            "attach": {
+                                "manual_crop_item_id": 161
+                            }
+                        }
+                    }
+                },
+                {
+                    "name": "水稻",
+                    "pipeline_override": {
+                        "ManualPlantingPreflight": {
+                            "attach": {
+                                "manual_crop_item_id": 162
+                            }
+                        },
+                        "ManualPlantingOnce": {
+                            "attach": {
+                                "manual_crop_item_id": 162
+                            }
+                        }
+                    }
+                },
+                {
+                    "name": "红薯",
+                    "pipeline_override": {
+                        "ManualPlantingPreflight": {
+                            "attach": {
+                                "manual_crop_item_id": 163
+                            }
+                        },
+                        "ManualPlantingOnce": {
+                            "attach": {
+                                "manual_crop_item_id": 163
+                            }
+                        }
+                    }
+                },
+                {
+                    "name": "辣椒",
+                    "pipeline_override": {
+                        "ManualPlantingPreflight": {
+                            "attach": {
+                                "manual_crop_item_id": 164
+                            }
+                        },
+                        "ManualPlantingOnce": {
+                            "attach": {
+                                "manual_crop_item_id": 164
+                            }
+                        }
+                    }
+                }
+            ]
+        },
+        "手动种植数量": {
+            "type": "input",
+            "inputs": [
+                {
+                    "name": "count",
+                    "label": "种植格数（1–36，以农田实际空位为限）",
+                    "default": "1",
+                    "pipeline_type": "int",
+                    "verify": "^(?:[1-9]|[12][0-9]|3[0-6])$"
+                }
+            ],
+            "pipeline_override": {
+                "ManualPlantingPreflight": {
+                    "custom_action_param": {
+                        "count": "{count}"
+                    }
+                },
+                "ManualPlantingOnce": {
+                    "custom_action_param": {
+                        "count": "{count}"
+                    }
+                }
+            }
+        },
+        "周期运行模式": {
+            "type": "select",
+            "default_case": "仅预览",
+            "cases": [
+                {
+                    "name": "仅预览",
+                    "pipeline_override": {
+                        "RunShortCycle": {
+                            "attach": {
+                                "ui_apply": false
+                            }
+                        }
+                    }
+                },
+                {
+                    "name": "正式执行",
+                    "pipeline_override": {
+                        "RunShortCycle": {
+                            "attach": {
+                                "ui_apply": true
+                            }
+                        }
+                    }
+                }
+            ]
+        },
+        "周期参数": {
+            "type": "input",
+            "inputs": [
+                {
+                    "name": "rounds",
+                    "label": "轮数（1–20）",
+                    "default": "1",
+                    "pipeline_type": "int",
+                    "verify": "^(?:[1-9]|1[0-9]|20)$"
+                },
+                {
+                    "name": "poll",
+                    "label": "检查间隔秒（5–300）",
+                    "default": "20",
+                    "pipeline_type": "int",
+                    "verify": "^(?:[5-9]|[1-9][0-9]|[12][0-9]{2}|300)$"
+                },
+                {
+                    "name": "timeout",
+                    "label": "监控超时秒（不小于间隔，最多7200）",
+                    "default": "900",
+                    "pipeline_type": "int",
+                    "verify": "^[0-9]{1,4}$"
+                }
+            ],
+            "pipeline_override": {
+                "RunShortCycle": {
+                    "custom_action_param": {
+                        "rounds": "{rounds}",
+                        "poll_seconds": "{poll}",
+                        "timeout_seconds": "{timeout}"
+                    }
+                },
+                "RunShortCyclePreview": {
+                    "custom_action_param": {
+                        "rounds": "{rounds}",
+                        "poll_seconds": "{poll}",
+                        "timeout_seconds": "{timeout}"
+                    }
+                },
+                "RunShortCycleApply": {
+                    "custom_action_param": {
+                        "rounds": "{rounds}",
+                        "poll_seconds": "{poll}",
+                        "timeout_seconds": "{timeout}"
+                    }
+                }
+            }
+        },
+        "刷新订单类型": {
+            "type": "select",
+            "default_case": "聚会订单",
+            "cases": [
+                {
+                    "name": "聚会订单",
+                    "pipeline_override": {
+                        "RefreshOrder": {
+                            "attach": {
+                                "refresh_order_type": "party"
+                            }
+                        }
+                    }
+                },
+                {
+                    "name": "外卖订单",
+                    "pipeline_override": {
+                        "RefreshOrder": {
+                            "attach": {
+                                "refresh_order_type": "takeout"
+                            }
+                        }
+                    }
+                },
+                {
+                    "name": "普通订单",
+                    "pipeline_override": {
+                        "RefreshOrder": {
+                            "attach": {
+                                "refresh_order_type": "normal"
+                            }
+                        }
+                    }
+                }
+            ]
+        },
+        "刷新订单位置": {
+            "type": "input",
+            "inputs": [
+                {
+                    "name": "order_number",
+                    "label": "订单位置（1–9，从左到右、从上到下）",
+                    "default": "1",
+                    "pipeline_type": "int",
+                    "verify": "^[1-9]$"
+                }
+            ],
+            "pipeline_override": {
+                "RefreshOrder": {
+                    "custom_action_param": {
+                        "order_number": "{order_number}"
+                    }
+                }
+            }
+        },
+        "一号位允许品类": {
+            "type": "checkbox",
+            "description": "勾选表示允许；一号位出现未勾选品类时更换并免费加速。默认勾选九类，可按需增减；至少选择一种。菜品等级不足仍自动刷新。",
+            "default_case": [
+                "苹果",
+                "番茄",
+                "水稻",
+                "玉米",
+                "甘蔗",
+                "土豆",
+                "玫瑰",
+                "牛肉",
+                "鸡蛋"
+            ],
+            "cases": [
+                {
+                    "name": "苹果",
+                    "label": "苹果",
+                    "pipeline_override": {
+                        "RunDailyBatchOrders": {
+                            "attach": {
+                                "first_order_allow_crop_012": true
+                            }
+                        },
+                        "RunDailyPartyOrders": {
+                            "attach": {
+                                "first_order_allow_crop_012": true
+                            }
+                        },
+                        "RunDailyTakeoutOrders": {
+                            "attach": {
+                                "first_order_allow_crop_012": true
+                            }
+                        },
+                        "RunDailyNormalOrders": {
+                            "attach": {
+                                "first_order_allow_crop_012": true
+                            }
+                        }
+                    }
+                },
+                {
+                    "name": "番茄",
+                    "label": "番茄",
+                    "pipeline_override": {
+                        "RunDailyBatchOrders": {
+                            "attach": {
+                                "first_order_allow_crop_005": true
+                            }
+                        },
+                        "RunDailyPartyOrders": {
+                            "attach": {
+                                "first_order_allow_crop_005": true
+                            }
+                        },
+                        "RunDailyTakeoutOrders": {
+                            "attach": {
+                                "first_order_allow_crop_005": true
+                            }
+                        },
+                        "RunDailyNormalOrders": {
+                            "attach": {
+                                "first_order_allow_crop_005": true
+                            }
+                        }
+                    }
+                },
+                {
+                    "name": "水稻",
+                    "label": "水稻",
+                    "pipeline_override": {
+                        "RunDailyBatchOrders": {
+                            "attach": {
+                                "first_order_allow_crop_023": true
+                            }
+                        },
+                        "RunDailyPartyOrders": {
+                            "attach": {
+                                "first_order_allow_crop_023": true
+                            }
+                        },
+                        "RunDailyTakeoutOrders": {
+                            "attach": {
+                                "first_order_allow_crop_023": true
+                            }
+                        },
+                        "RunDailyNormalOrders": {
+                            "attach": {
+                                "first_order_allow_crop_023": true
+                            }
+                        }
+                    }
+                },
+                {
+                    "name": "玉米",
+                    "label": "玉米",
+                    "pipeline_override": {
+                        "RunDailyBatchOrders": {
+                            "attach": {
+                                "first_order_allow_crop_007": true
+                            }
+                        },
+                        "RunDailyPartyOrders": {
+                            "attach": {
+                                "first_order_allow_crop_007": true
+                            }
+                        },
+                        "RunDailyTakeoutOrders": {
+                            "attach": {
+                                "first_order_allow_crop_007": true
+                            }
+                        },
+                        "RunDailyNormalOrders": {
+                            "attach": {
+                                "first_order_allow_crop_007": true
+                            }
+                        }
+                    }
+                },
+                {
+                    "name": "甘蔗",
+                    "label": "甘蔗",
+                    "pipeline_override": {
+                        "RunDailyBatchOrders": {
+                            "attach": {
+                                "first_order_allow_crop_022": true
+                            }
+                        },
+                        "RunDailyPartyOrders": {
+                            "attach": {
+                                "first_order_allow_crop_022": true
+                            }
+                        },
+                        "RunDailyTakeoutOrders": {
+                            "attach": {
+                                "first_order_allow_crop_022": true
+                            }
+                        },
+                        "RunDailyNormalOrders": {
+                            "attach": {
+                                "first_order_allow_crop_022": true
+                            }
+                        }
+                    }
+                },
+                {
+                    "name": "土豆",
+                    "label": "土豆",
+                    "pipeline_override": {
+                        "RunDailyBatchOrders": {
+                            "attach": {
+                                "first_order_allow_crop_008": true
+                            }
+                        },
+                        "RunDailyPartyOrders": {
+                            "attach": {
+                                "first_order_allow_crop_008": true
+                            }
+                        },
+                        "RunDailyTakeoutOrders": {
+                            "attach": {
+                                "first_order_allow_crop_008": true
+                            }
+                        },
+                        "RunDailyNormalOrders": {
+                            "attach": {
+                                "first_order_allow_crop_008": true
+                            }
+                        }
+                    }
+                },
+                {
+                    "name": "玫瑰",
+                    "label": "玫瑰花",
+                    "pipeline_override": {
+                        "RunDailyBatchOrders": {
+                            "attach": {
+                                "first_order_allow_crop_009": true
+                            }
+                        },
+                        "RunDailyPartyOrders": {
+                            "attach": {
+                                "first_order_allow_crop_009": true
+                            }
+                        },
+                        "RunDailyTakeoutOrders": {
+                            "attach": {
+                                "first_order_allow_crop_009": true
+                            }
+                        },
+                        "RunDailyNormalOrders": {
+                            "attach": {
+                                "first_order_allow_crop_009": true
+                            }
+                        }
+                    }
+                },
+                {
+                    "name": "牛肉",
+                    "label": "牛肉",
+                    "pipeline_override": {
+                        "RunDailyBatchOrders": {
+                            "attach": {
+                                "first_order_allow_crop_016": true
+                            }
+                        },
+                        "RunDailyPartyOrders": {
+                            "attach": {
+                                "first_order_allow_crop_016": true
+                            }
+                        },
+                        "RunDailyTakeoutOrders": {
+                            "attach": {
+                                "first_order_allow_crop_016": true
+                            }
+                        },
+                        "RunDailyNormalOrders": {
+                            "attach": {
+                                "first_order_allow_crop_016": true
+                            }
+                        }
+                    }
+                },
+                {
+                    "name": "鸡蛋",
+                    "label": "鸡蛋",
+                    "pipeline_override": {
+                        "RunDailyBatchOrders": {
+                            "attach": {
+                                "first_order_allow_crop_017": true
+                            }
+                        },
+                        "RunDailyPartyOrders": {
+                            "attach": {
+                                "first_order_allow_crop_017": true
+                            }
+                        },
+                        "RunDailyTakeoutOrders": {
+                            "attach": {
+                                "first_order_allow_crop_017": true
+                            }
+                        },
+                        "RunDailyNormalOrders": {
+                            "attach": {
+                                "first_order_allow_crop_017": true
+                            }
+                        }
+                    }
+                },
+                {
+                    "name": "红皮土豆",
+                    "label": "红皮土豆",
+                    "pipeline_override": {
+                        "RunDailyBatchOrders": {
+                            "attach": {
+                                "first_order_allow_crop_001": true
+                            }
+                        },
+                        "RunDailyPartyOrders": {
+                            "attach": {
+                                "first_order_allow_crop_001": true
+                            }
+                        },
+                        "RunDailyTakeoutOrders": {
+                            "attach": {
+                                "first_order_allow_crop_001": true
+                            }
+                        },
+                        "RunDailyNormalOrders": {
+                            "attach": {
+                                "first_order_allow_crop_001": true
+                            }
+                        }
+                    }
+                },
+                {
+                    "name": "白玉草莓",
+                    "label": "白玉草莓",
+                    "pipeline_override": {
+                        "RunDailyBatchOrders": {
+                            "attach": {
+                                "first_order_allow_crop_002": true
+                            }
+                        },
+                        "RunDailyPartyOrders": {
+                            "attach": {
+                                "first_order_allow_crop_002": true
+                            }
+                        },
+                        "RunDailyTakeoutOrders": {
+                            "attach": {
+                                "first_order_allow_crop_002": true
+                            }
+                        },
+                        "RunDailyNormalOrders": {
+                            "attach": {
+                                "first_order_allow_crop_002": true
+                            }
+                        }
+                    }
+                },
+                {
+                    "name": "山鸡肉",
+                    "label": "山鸡肉",
+                    "pipeline_override": {
+                        "RunDailyBatchOrders": {
+                            "attach": {
+                                "first_order_allow_crop_003": true
+                            }
+                        },
+                        "RunDailyPartyOrders": {
+                            "attach": {
+                                "first_order_allow_crop_003": true
+                            }
+                        },
+                        "RunDailyTakeoutOrders": {
+                            "attach": {
+                                "first_order_allow_crop_003": true
+                            }
+                        },
+                        "RunDailyNormalOrders": {
+                            "attach": {
+                                "first_order_allow_crop_003": true
+                            }
+                        }
+                    }
+                },
+                {
+                    "name": "青苹果",
+                    "label": "青苹果",
+                    "pipeline_override": {
+                        "RunDailyBatchOrders": {
+                            "attach": {
+                                "first_order_allow_crop_004": true
+                            }
+                        },
+                        "RunDailyPartyOrders": {
+                            "attach": {
+                                "first_order_allow_crop_004": true
+                            }
+                        },
+                        "RunDailyTakeoutOrders": {
+                            "attach": {
+                                "first_order_allow_crop_004": true
+                            }
+                        },
+                        "RunDailyNormalOrders": {
+                            "attach": {
+                                "first_order_allow_crop_004": true
+                            }
+                        }
+                    }
+                },
+                {
+                    "name": "小麦",
+                    "label": "小麦",
+                    "pipeline_override": {
+                        "RunDailyBatchOrders": {
+                            "attach": {
+                                "first_order_allow_crop_006": true
+                            }
+                        },
+                        "RunDailyPartyOrders": {
+                            "attach": {
+                                "first_order_allow_crop_006": true
+                            }
+                        },
+                        "RunDailyTakeoutOrders": {
+                            "attach": {
+                                "first_order_allow_crop_006": true
+                            }
+                        },
+                        "RunDailyNormalOrders": {
+                            "attach": {
+                                "first_order_allow_crop_006": true
+                            }
+                        }
+                    }
+                },
+                {
+                    "name": "胡萝卜",
+                    "label": "胡萝卜",
+                    "pipeline_override": {
+                        "RunDailyBatchOrders": {
+                            "attach": {
+                                "first_order_allow_crop_010": true
+                            }
+                        },
+                        "RunDailyPartyOrders": {
+                            "attach": {
+                                "first_order_allow_crop_010": true
+                            }
+                        },
+                        "RunDailyTakeoutOrders": {
+                            "attach": {
+                                "first_order_allow_crop_010": true
+                            }
+                        },
+                        "RunDailyNormalOrders": {
+                            "attach": {
+                                "first_order_allow_crop_010": true
+                            }
+                        }
+                    }
+                },
+                {
+                    "name": "红薯",
+                    "label": "红薯",
+                    "pipeline_override": {
+                        "RunDailyBatchOrders": {
+                            "attach": {
+                                "first_order_allow_crop_011": true
+                            }
+                        },
+                        "RunDailyPartyOrders": {
+                            "attach": {
+                                "first_order_allow_crop_011": true
+                            }
+                        },
+                        "RunDailyTakeoutOrders": {
+                            "attach": {
+                                "first_order_allow_crop_011": true
+                            }
+                        },
+                        "RunDailyNormalOrders": {
+                            "attach": {
+                                "first_order_allow_crop_011": true
+                            }
+                        }
+                    }
+                },
+                {
+                    "name": "黄桃",
+                    "label": "黄桃",
+                    "pipeline_override": {
+                        "RunDailyBatchOrders": {
+                            "attach": {
+                                "first_order_allow_crop_013": true
+                            }
+                        },
+                        "RunDailyPartyOrders": {
+                            "attach": {
+                                "first_order_allow_crop_013": true
+                            }
+                        },
+                        "RunDailyTakeoutOrders": {
+                            "attach": {
+                                "first_order_allow_crop_013": true
+                            }
+                        },
+                        "RunDailyNormalOrders": {
+                            "attach": {
+                                "first_order_allow_crop_013": true
+                            }
+                        }
+                    }
+                },
+                {
+                    "name": "柠檬",
+                    "label": "柠檬",
+                    "pipeline_override": {
+                        "RunDailyBatchOrders": {
+                            "attach": {
+                                "first_order_allow_crop_014": true
+                            }
+                        },
+                        "RunDailyPartyOrders": {
+                            "attach": {
+                                "first_order_allow_crop_014": true
+                            }
+                        },
+                        "RunDailyTakeoutOrders": {
+                            "attach": {
+                                "first_order_allow_crop_014": true
+                            }
+                        },
+                        "RunDailyNormalOrders": {
+                            "attach": {
+                                "first_order_allow_crop_014": true
+                            }
+                        }
+                    }
+                },
+                {
+                    "name": "椰子",
+                    "label": "椰子",
+                    "pipeline_override": {
+                        "RunDailyBatchOrders": {
+                            "attach": {
+                                "first_order_allow_crop_015": true
+                            }
+                        },
+                        "RunDailyPartyOrders": {
+                            "attach": {
+                                "first_order_allow_crop_015": true
+                            }
+                        },
+                        "RunDailyTakeoutOrders": {
+                            "attach": {
+                                "first_order_allow_crop_015": true
+                            }
+                        },
+                        "RunDailyNormalOrders": {
+                            "attach": {
+                                "first_order_allow_crop_015": true
+                            }
+                        }
+                    }
+                },
+                {
+                    "name": "猪肉",
+                    "label": "猪肉",
+                    "pipeline_override": {
+                        "RunDailyBatchOrders": {
+                            "attach": {
+                                "first_order_allow_crop_018": true
+                            }
+                        },
+                        "RunDailyPartyOrders": {
+                            "attach": {
+                                "first_order_allow_crop_018": true
+                            }
+                        },
+                        "RunDailyTakeoutOrders": {
+                            "attach": {
+                                "first_order_allow_crop_018": true
+                            }
+                        },
+                        "RunDailyNormalOrders": {
+                            "attach": {
+                                "first_order_allow_crop_018": true
+                            }
+                        }
+                    }
+                },
+                {
+                    "name": "羊肉",
+                    "label": "羊肉",
+                    "pipeline_override": {
+                        "RunDailyBatchOrders": {
+                            "attach": {
+                                "first_order_allow_crop_019": true
+                            }
+                        },
+                        "RunDailyPartyOrders": {
+                            "attach": {
+                                "first_order_allow_crop_019": true
+                            }
+                        },
+                        "RunDailyTakeoutOrders": {
+                            "attach": {
+                                "first_order_allow_crop_019": true
+                            }
+                        },
+                        "RunDailyNormalOrders": {
+                            "attach": {
+                                "first_order_allow_crop_019": true
+                            }
+                        }
+                    }
+                },
+                {
+                    "name": "牛奶",
+                    "label": "牛奶",
+                    "pipeline_override": {
+                        "RunDailyBatchOrders": {
+                            "attach": {
+                                "first_order_allow_crop_020": true
+                            }
+                        },
+                        "RunDailyPartyOrders": {
+                            "attach": {
+                                "first_order_allow_crop_020": true
+                            }
+                        },
+                        "RunDailyTakeoutOrders": {
+                            "attach": {
+                                "first_order_allow_crop_020": true
+                            }
+                        },
+                        "RunDailyNormalOrders": {
+                            "attach": {
+                                "first_order_allow_crop_020": true
+                            }
+                        }
+                    }
+                },
+                {
+                    "name": "鱼肉",
+                    "label": "鱼肉",
+                    "pipeline_override": {
+                        "RunDailyBatchOrders": {
+                            "attach": {
+                                "first_order_allow_crop_021": true
+                            }
+                        },
+                        "RunDailyPartyOrders": {
+                            "attach": {
+                                "first_order_allow_crop_021": true
+                            }
+                        },
+                        "RunDailyTakeoutOrders": {
+                            "attach": {
+                                "first_order_allow_crop_021": true
+                            }
+                        },
+                        "RunDailyNormalOrders": {
+                            "attach": {
+                                "first_order_allow_crop_021": true
+                            }
+                        }
+                    }
+                },
+                {
+                    "name": "辣椒",
+                    "label": "辣椒",
+                    "pipeline_override": {
+                        "RunDailyBatchOrders": {
+                            "attach": {
+                                "first_order_allow_crop_024": true
+                            }
+                        },
+                        "RunDailyPartyOrders": {
+                            "attach": {
+                                "first_order_allow_crop_024": true
+                            }
+                        },
+                        "RunDailyTakeoutOrders": {
+                            "attach": {
+                                "first_order_allow_crop_024": true
+                            }
+                        },
+                        "RunDailyNormalOrders": {
+                            "attach": {
+                                "first_order_allow_crop_024": true
+                            }
+                        }
+                    }
+                }
+            ]
+        },
+        "饲料循环设置": {
+            "type": "input",
+            "inputs": [
+                {
+                    "name": "maximum",
+                    "label": "背包饲料暂停上限（1–99999）",
+                    "default": "120",
+                    "pipeline_type": "int",
+                    "verify": "^[1-9][0-9]{0,4}$"
+                },
+                {
+                    "name": "interval",
+                    "label": "检查间隔秒（10–3600）",
+                    "default": "60",
+                    "pipeline_type": "int",
+                    "verify": "^(?:[1-9][0-9]{1,2}|[12][0-9]{3}|3[0-5][0-9]{2}|3600)$"
+                }
+            ],
+            "pipeline_override": {
+                "RunFeedProduction": {
+                    "custom_action_param": {
+                        "max_feed": "{maximum}",
+                        "poll_seconds": "{interval}"
+                    }
+                }
+            }
         }
     }
 }

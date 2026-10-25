@@ -4,27 +4,17 @@ env:
   # 版本控制：
   # - 设置 VERSION 为空字符串时，下载 latest 版本
   # - 设置 VERSION 为具体版本号时（如 v1.2.3），下载指定版本
-  MAAFW_VERSION: ""
+  MAAFW_VERSION: "v5.13.1"
   MFAA_VERSION: ""
 
 on:
   push:
     tags:
       - "v*"
-    branches:
-      - "**"
-    paths:
-      - ".github/workflows/install.yml"
-      - "assets/**"
-      - "**.py"
-  pull_request:
-    branches:
-      - "**"
-    paths:
-      - ".github/workflows/install.yml"
-      - "assets/**"
-      - "**.py"
   workflow_dispatch:
+
+permissions:
+  contents: read
 
 jobs:
   meta:
@@ -35,6 +25,11 @@ jobs:
           fetch-depth: 0
       - id: set_tag
         run: |
+          if [[ "${{ github.ref }}" == refs/tags/* ]]; then
+            python tools/check_version.py --tag "${GITHUB_REF_NAME}"
+          else
+            python tools/check_version.py
+          fi
           # 检查标签格式
           is_release=${{ startsWith(github.ref, 'refs/tags/v') }}
           tag=$(git describe --tags --match "v*" ${{ github.ref }} || true)
@@ -140,7 +135,7 @@ jobs:
 
       - uses: actions/upload-artifact@v4
         with:
-          name: MaaXXX-${{ matrix.os }}-${{ matrix.arch }}
+          name: Maa-CarrotFarm2-${{ matrix.os }}-${{ matrix.arch }}
           path: "install"
 
   changelog:
@@ -173,6 +168,8 @@ jobs:
     if: ${{ needs.meta.outputs.is_release == 'true' }}
     needs: [meta, install, changelog]
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
     steps:
       - uses: actions/download-artifact@v4
         with:

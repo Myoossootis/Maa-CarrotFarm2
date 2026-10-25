@@ -105,7 +105,7 @@ def install_resource():
 
     shutil.copytree(
         working_dir / "assets" / "resource",
-        install_path / "resource",
+        install_path / "assets" / "resource",
         dirs_exist_ok=True,
     )
     shutil.copy2(
@@ -117,6 +117,10 @@ def install_resource():
         interface = jsonc.load(f)
 
     interface["version"] = version
+    interface["resource"][0]["path"] = ["./assets/resource"]
+    interface["agent"]["child_args"] = ["-u", "./agent/main.py"]
+    interface["task"] = [task for task in interface["task"]
+                         if task["entry"] in {"RuntimePreflight", "RunShortCycle", "RecognizeClockStart", "RefreshOrder", "RunFeedProduction"}]
 
     with open(install_path / "interface.json", "w", encoding="utf-8") as f:
         jsonc.dump(interface, f, ensure_ascii=False, indent=4)
@@ -139,6 +143,14 @@ def install_agent():
         install_path / "agent",
         dirs_exist_ok=True,
     )
+    # Backend uses the same CLI modules as local debugging. Do not ship runtime
+    # inventories, screenshots, logs, or a developer's virtual environment.
+    shutil.copytree(working_dir / "tools", install_path / "tools",
+                    ignore=shutil.ignore_patterns("__pycache__", "*.pyc"), dirs_exist_ok=True)
+    for relative in ("employee_capabilities.json", "backpack_crops/registry.json", "feed_mutations.json"):
+        destination = install_path / "assets" / "catalog" / relative
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(working_dir / "assets" / "catalog" / relative, destination)
 
 
 if __name__ == "__main__":

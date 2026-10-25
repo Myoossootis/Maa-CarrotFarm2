@@ -1,0 +1,8 @@
+{
+    "schema_version": 1,
+    "source": "decoded cfg_items; separate from screenshot template registry",
+    "products": [
+        { "id": "crop_025", "game_item_id": 161, "name": "白菜", "route": "field" },
+        { "id": "crop_026", "game_item_id": 160, "name": "草莓", "route": "field" }
+    ]
+}

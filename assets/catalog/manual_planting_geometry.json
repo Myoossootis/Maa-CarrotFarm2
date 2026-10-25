@@ -1,0 +1,663 @@
+{
+  "schemaVersion": 1,
+  "packageVersion": "87",
+  "projection": [
+    [
+      0.4285641244720441,
+      0,
+      607.7210616672656
+    ],
+    [
+      0,
+      -0.4358135085913792,
+      477.5520147380063
+    ]
+  ],
+  "layouts": {
+    "farmland": [
+      [
+        -608.17,
+        81.25900000000001
+      ],
+      [
+        -396.135,
+        185.627
+      ],
+      [
+        -193.04499999999996,
+        290.254
+      ],
+      [
+        -405.154,
+        -32.62599999999999
+      ],
+      [
+        -184.447,
+        76.12
+      ],
+      [
+        10.498000000000047,
+        180.238
+      ],
+      [
+        -210.774,
+        -135.263
+      ],
+      [
+        3.6760000000000446,
+        -21.429000000000002
+      ],
+      [
+        201.87200000000007,
+        78.20600000000002
+      ],
+      [
+        -9.803999999999974,
+        -230.90699999999998
+      ],
+      [
+        212.26200000000006,
+        -118.814
+      ],
+      [
+        408.1700000000001,
+        -16.432999999999993
+      ],
+      [
+        193.77100000000007,
+        -330.38
+      ],
+      [
+        402.55500000000006,
+        -221.41
+      ],
+      [
+        603.575,
+        -118.25399999999999
+      ]
+    ],
+    "farmland2": [
+      [
+        -193.04499999999996,
+        290.254
+      ],
+      [
+        10.498000000000047,
+        180.238
+      ],
+      [
+        201.87200000000007,
+        78.20600000000002
+      ],
+      [
+        408.1700000000001,
+        -16.432999999999993
+      ],
+      [
+        603.575,
+        -118.25399999999999
+      ],
+      [
+        -396.135,
+        185.627
+      ],
+      [
+        -184.447,
+        76.12
+      ],
+      [
+        3.6760000000000446,
+        -21.429000000000002
+      ],
+      [
+        212.26200000000006,
+        -118.814
+      ],
+      [
+        402.55500000000006,
+        -221.41
+      ],
+      [
+        -608.17,
+        81.25900000000001
+      ],
+      [
+        -405.154,
+        -32.62599999999999
+      ],
+      [
+        -210.774,
+        -135.263
+      ],
+      [
+        -9.803999999999974,
+        -230.90699999999998
+      ],
+      [
+        193.77100000000007,
+        -330.38
+      ]
+    ]
+  },
+  "fields": {
+    "field_1": {
+      "buildingItemId": 12,
+      "layout": "farmland",
+      "mapAnchor": [
+        1016.2,
+        73.3
+      ]
+    },
+    "field_2": {
+      "buildingItemId": 284,
+      "layout": "farmland2",
+      "mapAnchor": [
+        385,
+        -250.6
+      ]
+    },
+    "field_3": {
+      "buildingItemId": 285,
+      "layout": "farmland2",
+      "mapAnchor": [
+        -318.4,
+        -603.2
+      ]
+    }
+  },
+  "referenceViews": [
+    {
+      "image": "farm_reference.png",
+      "canonicalShift": [
+        0,
+        0
+      ]
+    },
+    {
+      "image": "farm_west_reference.png",
+      "canonicalShift": [
+        226.4,
+        0
+      ]
+    },
+    {
+      "image": "farm_scaled_reference.png",
+      "canonicalMatrix": [
+        [
+          0.7144173750547999,
+          -0.0001509614363995193,
+          103.06298082206465
+        ],
+        [
+          0.0001509614363995193,
+          0.7144173750547999,
+          202.05127501355275
+        ]
+      ],
+      "calibrationEvidence": {
+        "sourceScreenshot": "start.png",
+        "screenshotSha256": "dfc711473d6b518a82226ab5c6043003edf71459f96502ecaa7f9c11009822d2",
+        "calibrationFile": "field_2_scale_calibration.json",
+        "calibrationSha256": "55c97e23865b074b91b280cbcf7a640c720cae7066e74b9793822dfe7153cd37",
+        "models": [
+          {
+            "reference": "farm_reference.png",
+            "matrix": [
+              [
+                0.7147813874029313,
+                -0.0003165909961967238,
+                103.05541276237282
+              ],
+              [
+                0.0003165909961967238,
+                0.7147813874029313,
+                201.69296609350152
+              ]
+            ],
+            "inliers": 13,
+            "ratio": 0.5416666666666666,
+            "span": [
+              355.9269714355469,
+              326.3640441894531
+            ]
+          },
+          {
+            "reference": "farm_west_reference.png",
+            "matrix": [
+              [
+                0.7140533627066684,
+                1.4668123397685234e-05,
+                103.07054888175645
+              ],
+              [
+                -1.4668123397685234e-05,
+                0.7140533627066684,
+                202.409583933604
+              ]
+            ],
+            "inliers": 29,
+            "ratio": 0.5370370370370371,
+            "span": [
+              247.3516845703125,
+              660.8819942474365
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "image": "farm_scaled_west_reference.png",
+      "canonicalMatrix": [
+        [
+          0.7142633072812569,
+          -2.8868551036114154e-05,
+          382.03652237522397
+        ],
+        [
+          2.8868551036114154e-05,
+          0.7142633072812569,
+          146.89280904887372
+        ]
+      ],
+      "calibrationEvidence": {
+        "sourceScreenshot": "field_3_before_navigation.png",
+        "screenshotSha256": "8b09e724c1d4f6583c10eb8ae35bbb90fd06b148a72a8afea4bfefb42119a0dc",
+        "calibrationFile": "field_3_scale_calibration.json",
+        "calibrationSha256": "cbb7835223c4a2620cb860e5bc5ed47d4f8bb4320d637f4fe031cd17f22bf00b",
+        "models": [
+          {
+            "reference": "farm_west_reference.png",
+            "matrix": [
+              [
+                0.7142633072812569,
+                -2.8868551036114154e-05,
+                382.03652237522397
+              ],
+              [
+                2.8868551036114154e-05,
+                0.7142633072812569,
+                146.89280904887372
+              ]
+            ],
+            "inliers": 120,
+            "ratio": 0.8823529411764706,
+            "span": [
+              633.3300800323486,
+              713.7394771575928
+            ]
+          }
+        ]
+      }
+    }
+  ],
+  "observations": [
+    {
+      "fieldId": "field_2",
+      "slot": 6,
+      "image": "farm_west_reference.png",
+      "pixel": [
+        388.7,
+        537.2
+      ],
+      "maxErrorPixels": 8
+    },
+    {
+      "fieldId": "field_2",
+      "slot": 7,
+      "image": "farm_west_reference.png",
+      "pixel": [
+        480.6,
+        584.8
+      ],
+      "maxErrorPixels": 8
+    },
+    {
+      "fieldId": "field_2",
+      "slot": 8,
+      "image": "farm_west_reference.png",
+      "pixel": [
+        562.4,
+        629.1
+      ],
+      "maxErrorPixels": 8
+    },
+    {
+      "fieldId": "field_2",
+      "slot": 9,
+      "image": "farm_west_reference.png",
+      "pixel": [
+        653.1,
+        669.6
+      ],
+      "maxErrorPixels": 8
+    },
+    {
+      "fieldId": "field_2",
+      "slot": 11,
+      "image": "farm_west_reference.png",
+      "pixel": [
+        296.2,
+        582.5
+      ],
+      "maxErrorPixels": 8
+    },
+    {
+      "fieldId": "field_2",
+      "slot": 12,
+      "image": "farm_west_reference.png",
+      "pixel": [
+        384.7,
+        632.2
+      ],
+      "maxErrorPixels": 8
+    },
+    {
+      "fieldId": "field_2",
+      "slot": 13,
+      "image": "farm_west_reference.png",
+      "pixel": [
+        469.2,
+        676.6
+      ],
+      "maxErrorPixels": 8
+    },
+    {
+      "fieldId": "field_2",
+      "slot": 14,
+      "image": "farm_west_reference.png",
+      "pixel": [
+        556.6,
+        718.4
+      ],
+      "maxErrorPixels": 8
+    },
+    {
+      "fieldId": "field_2",
+      "slot": 15,
+      "image": "farm_west_reference.png",
+      "pixel": [
+        645.2,
+        761.5
+      ],
+      "maxErrorPixels": 8
+    },
+    {
+      "fieldId": "field_3",
+      "slot": 1,
+      "image": "farm_west_reference.png",
+      "pixel": [
+        177.4,
+        643.3
+      ],
+      "maxErrorPixels": 8
+    },
+    {
+      "fieldId": "field_3",
+      "slot": 2,
+      "image": "farm_west_reference.png",
+      "pixel": [
+        260.6,
+        692.9
+      ],
+      "maxErrorPixels": 8
+    },
+    {
+      "fieldId": "field_3",
+      "slot": 3,
+      "image": "farm_west_reference.png",
+      "pixel": [
+        342.8,
+        737.3
+      ],
+      "maxErrorPixels": 8
+    },
+    {
+      "fieldId": "field_3",
+      "slot": 4,
+      "image": "farm_west_reference.png",
+      "pixel": [
+        432.4,
+        778.4
+      ],
+      "maxErrorPixels": 8
+    },
+    {
+      "fieldId": "field_3",
+      "slot": 5,
+      "image": "farm_west_reference.png",
+      "pixel": [
+        517.4,
+        822.7
+      ],
+      "maxErrorPixels": 8
+    }
+  ],
+  "evidence": {
+    "authority": "shipped-artifact-and-historical-screenshot",
+    "packageSha256": "8ec14023f65757fa22da2cb155be4c3e9d8e6b5067c26dbb0f854f5753c51da6",
+    "prefab": {
+      "sha256": "c3800fd8eeb856d1d48812e187dbdae8374794b6b498e622a6107871bd16578a",
+      "assetUuid": "82d04d6a-0bb7-4161-b84c-2a5814d0dd96",
+      "resourcePath": "prefabs/map/building/farmland2",
+      "rootNode": "farmland2",
+      "rootFields": {
+        "serializedInstanceIndex": 2,
+        "localPosition": [
+          -617.078,
+          -148.445,
+          0
+        ],
+        "scale": [
+          0.5,
+          0.5,
+          1
+        ]
+      }
+    },
+    "configuration": [
+      {
+        "packageMember": "/subpackages/subpkg/import/58/5861cc2e-8183-40ec-9aec-9007a1d80e42.ff2a0.json",
+        "table": "cfg_building_level",
+        "row": {
+          "id": 1,
+          "item_id": 12,
+          "level": 1,
+          "build_cd": 0,
+          "point_data": null,
+          "decorates": "5474,15",
+          "pos": "farmland",
+          "bundle": null,
+          "prefab_path": null,
+          "unlock_condi": "105,2",
+          "cost_items": null,
+          "main_chara_show": null,
+          "img_preview": null,
+          "light_path": null,
+          "params": "rw_box_id,20501"
+        },
+        "memberSha256": "d0ac02beff60d792861ec8afcbcb735f9e8ec5f1629afca2a51305d1f91bbaa2"
+      },
+      {
+        "packageMember": "/subpackages/subpkg/import/58/5861cc2e-8183-40ec-9aec-9007a1d80e42.ff2a0.json",
+        "table": "cfg_building_level",
+        "row": {
+          "id": 2,
+          "item_id": 284,
+          "level": 1,
+          "build_cd": 0,
+          "point_data": null,
+          "decorates": "5475,15",
+          "pos": "farmland2",
+          "bundle": null,
+          "prefab_path": null,
+          "unlock_condi": "105,14;724,1,5474,15",
+          "cost_items": "1,3400",
+          "main_chara_show": null,
+          "img_preview": null,
+          "light_path": null,
+          "params": "rw_box_id,20502"
+        },
+        "memberSha256": "d0ac02beff60d792861ec8afcbcb735f9e8ec5f1629afca2a51305d1f91bbaa2"
+      },
+      {
+        "packageMember": "/subpackages/subpkg/import/58/5861cc2e-8183-40ec-9aec-9007a1d80e42.ff2a0.json",
+        "table": "cfg_building_level",
+        "row": {
+          "id": 3,
+          "item_id": 285,
+          "level": 1,
+          "build_cd": 0,
+          "point_data": null,
+          "decorates": "5476,15",
+          "pos": "farmland3",
+          "bundle": null,
+          "prefab_path": null,
+          "unlock_condi": "105,37;724,1,5475,15",
+          "cost_items": "1,223200",
+          "main_chara_show": null,
+          "img_preview": null,
+          "light_path": null,
+          "params": "rw_box_id,20503"
+        },
+        "memberSha256": "d0ac02beff60d792861ec8afcbcb735f9e8ec5f1629afca2a51305d1f91bbaa2"
+      },
+      {
+        "packageMember": "/subpackages/subpkg/import/b4/b4daa753-6fea-4d19-b3c2-0a346e27a3cc.d5763.json",
+        "table": "cfg_building",
+        "row": {
+          "id": 1,
+          "item_id": 12,
+          "type": 0,
+          "img_poster": "res/poster/preview_fields",
+          "fence_name": "fence4",
+          "need_clean_pos": null,
+          "map_item_id": 11,
+          "img_lock": null,
+          "img_preview": "res/b_preview/farmland",
+          "board_pos_name": null,
+          "z_index_y": null,
+          "parent_building_ids": null,
+          "child_building_ids": null,
+          "params": "seed_type,7;tool_ids,20_24;collect_id,15;datas,20_2054_1_2696_2697_2698"
+        },
+        "memberSha256": "c866ce10817f17c4d5c63e59d8cb9dbfeb648f2b6368fd4fcf6e4a0cf0d8db3f"
+      },
+      {
+        "packageMember": "/subpackages/subpkg/import/b4/b4daa753-6fea-4d19-b3c2-0a346e27a3cc.d5763.json",
+        "table": "cfg_building",
+        "row": {
+          "id": 2,
+          "item_id": 284,
+          "type": 0,
+          "img_poster": "res/poster/preview_fields",
+          "fence_name": "fence4",
+          "need_clean_pos": "env-farm2-bush1-1,env-farm2-grass2-1,env-farm2-grass4-1,env-farm2-grass5-1",
+          "map_item_id": 11,
+          "img_lock": null,
+          "img_preview": "res/b_preview/farmland",
+          "board_pos_name": "PosFarmland2",
+          "z_index_y": null,
+          "parent_building_ids": null,
+          "child_building_ids": null,
+          "params": "seed_type,7;tool_ids,20_24;collect_id,15;size,10_5_0_11_6_1_12_7_2_13_8_3_14_9_4"
+        },
+        "memberSha256": "c866ce10817f17c4d5c63e59d8cb9dbfeb648f2b6368fd4fcf6e4a0cf0d8db3f"
+      },
+      {
+        "packageMember": "/subpackages/subpkg/import/b4/b4daa753-6fea-4d19-b3c2-0a346e27a3cc.d5763.json",
+        "table": "cfg_building",
+        "row": {
+          "id": 3,
+          "item_id": 285,
+          "type": 0,
+          "img_poster": "res/poster/preview_fields",
+          "fence_name": "fence4",
+          "need_clean_pos": "env-farm3-tree2-1,env-farm3-bush2-1,env-farm3-grass3-1,env-farm3-grass4-1,env-farm3-grass5-1,env-farm3-stone1-1,env-farm3-stone2-1,env-farm3-stone3-1,env-farm3-stone3-2",
+          "map_item_id": 11,
+          "img_lock": null,
+          "img_preview": "res/b_preview/farmland",
+          "board_pos_name": "PosFarmland3",
+          "z_index_y": null,
+          "parent_building_ids": null,
+          "child_building_ids": null,
+          "params": "seed_type,7;tool_ids,20_24;collect_id,15;size,10_5_0_11_6_1_12_7_2_13_8_3_14_9_4"
+        },
+        "memberSha256": "c866ce10817f17c4d5c63e59d8cb9dbfeb648f2b6368fd4fcf6e4a0cf0d8db3f"
+      },
+      {
+        "packageMember": "/subpackages/subpkg/import/c0/c013eb1a-0d0a-42d6-bd4c-ddd2984509a8.1bd9e.json",
+        "table": "cfg_skin_env",
+        "row": {
+          "id": 136,
+          "skin_id": 0,
+          "ref_skin_id": null,
+          "item_id": 12,
+          "is_rare": 0,
+          "level": "1",
+          "bundle": "farm",
+          "prefab_path": "prefabs/map/building/farmland",
+          "point_data": null,
+          "light_path": null,
+          "img_path": null,
+          "params": null
+        },
+        "memberSha256": "dbaa3d9a2603be44f078dfdd010b3b05701baa419efde3cc3ebe8f34e693c7f0"
+      },
+      {
+        "packageMember": "/subpackages/subpkg/import/c0/c013eb1a-0d0a-42d6-bd4c-ddd2984509a8.1bd9e.json",
+        "table": "cfg_skin_env",
+        "row": {
+          "id": 137,
+          "skin_id": 0,
+          "ref_skin_id": null,
+          "item_id": 284,
+          "is_rare": 0,
+          "level": "1",
+          "bundle": "farm",
+          "prefab_path": "prefabs/map/building/farmland2",
+          "point_data": null,
+          "light_path": null,
+          "img_path": null,
+          "params": null
+        },
+        "memberSha256": "dbaa3d9a2603be44f078dfdd010b3b05701baa419efde3cc3ebe8f34e693c7f0"
+      },
+      {
+        "packageMember": "/subpackages/subpkg/import/c0/c013eb1a-0d0a-42d6-bd4c-ddd2984509a8.1bd9e.json",
+        "table": "cfg_skin_env",
+        "row": {
+          "id": 138,
+          "skin_id": 0,
+          "ref_skin_id": null,
+          "item_id": 285,
+          "is_rare": 0,
+          "level": "1",
+          "bundle": "farm",
+          "prefab_path": "prefabs/map/building/farmland2",
+          "point_data": null,
+          "light_path": null,
+          "img_path": null,
+          "params": null
+        },
+        "memberSha256": "dbaa3d9a2603be44f078dfdd010b3b05701baa419efde3cc3ebe8f34e693c7f0"
+      }
+    ],
+    "mapProbe": {
+      "name": "1505db7d-317e-4c91-a12a-0cff0a0a0df9.8e56a.json",
+      "sha256": "bd04e5f302dbc188e7e7fa44a468ddd81a9edc0bd7fa069c3de424dbbd00b352",
+      "jsonPath": "/5/0/2/point_home",
+      "relativeAnchorRule": "Subtract field_1 anchor from same map variant; never mix maps."
+    },
+    "screenshot": {
+      "name": "identify_farmland_before.png",
+      "sha256": "f9882845b8ba0863625710dc5958b21751c8c6c982256ccd61365e5ac81352bd",
+      "observations": "独立分割已保存画面中的完整土壤色块中心；未用这些点拟合投影。"
+    },
+    "slotIndexRule": "BdingFarmland.initDecorates/refreshFieldState: tuple index r directly maps to root_fields.children[r]; cfg_building size is not the tuple order.",
+    "liveAcceptancePerformed": false,
+    "rea": {
+      "parentEvidenceId": "ev_41389beaff9aa7e9e9074c8baa4a11bc7a9524231d5c9156e799086d1e3d18be",
+      "coverage": "partial; extracted BdingFarmland fragment did not parse as a complete module; JSON/prefab and direct source inspection provide the mapping evidence."
+    }
+  }
+}

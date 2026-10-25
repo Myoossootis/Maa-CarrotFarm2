@@ -1,0 +1,404 @@
+{
+  "schema_version": 2,
+  "observed_on": "2026-09-26",
+  "source": "Maa Win32 FramePool screenshots of employee work-plan dialogs",
+  "level_gating": {
+    "rule": "Assign crop C to worker W only if C is listed under W and the level gate passes: if min_level is an int, require worker_level >= min_level; if eligibility is observed_unlocked with min_level null, allow only for that slot (crop was unlocked on that worker dialog at capture time); needs_live_recording / locked_or_level_gated / unsupported never allocate.",
+    "unknown_worker_level_policy": "Do not invent worker_level. Numeric min_level without worker_level is allowed only when eligibility is observed_unlocked (prior proof on that slot)."
+  },
+  "product_aliases": {
+    "小麥": "小麦",
+    "麦子": "小麦",
+    "小麦。": "小麦",
+    "小麦 ": "小麦",
+    "蕃茄": "番茄",
+    "土豆": "土豆"
+  },
+  "notes": [
+    "Only products visibly unlocked in the work-plan dialogs are schedulable.",
+    "The red strawberry icon is not assumed to produce 白玉草莓.",
+    "Energy is a current observation, not a verified speed measurement.",
+    "The mill has no assigned employee and is excluded.",
+    "schema_version 2 adds level gating. Numeric thresholds are null until live-recorded; existing products keep eligibility=observed_unlocked per slot from 2026-09-26 captures.",
+    "Do not treat unverified_visible or pending_capabilities as schedulable."
+  ],
+  "slots": [
+    {
+      "id": "field_1",
+      "label": "农田1",
+      "worker": "兔耳员工",
+      "capacity": 50,
+      "observed_energy": 12462,
+      "worker_level": null,
+      "worker_level_status": "needs_live_recording",
+      "products": [
+        "番茄",
+        "小麦",
+        "玉米",
+        "甘蔗",
+        "土豆",
+        "玫瑰",
+        "胡萝卜"
+      ],
+      "product_gates": {
+        "番茄": {
+          "min_level": null,
+          "eligibility": "observed_unlocked"
+        },
+        "小麦": {
+          "min_level": null,
+          "eligibility": "observed_unlocked"
+        },
+        "玉米": {
+          "min_level": null,
+          "eligibility": "observed_unlocked"
+        },
+        "甘蔗": {
+          "min_level": null,
+          "eligibility": "observed_unlocked"
+        },
+        "土豆": {
+          "min_level": null,
+          "eligibility": "observed_unlocked"
+        },
+        "玫瑰": {
+          "min_level": null,
+          "eligibility": "observed_unlocked"
+        },
+        "胡萝卜": {
+          "min_level": null,
+          "eligibility": "observed_unlocked"
+        }
+      },
+      "unverified_visible": [
+        {
+          "name": "普通草莓",
+          "status": "needs_live_level_recording",
+          "eligibility": "needs_live_recording",
+          "min_level": null,
+          "note": "Icon appeared unlocked on this worker dialog but was not added to schedulable products (registry name / level threshold not verified). Open employee list -> work plan for the slot; note worker level on the card/header; confirm the crop icon is unlocked (not grey); screenshot to .tmp/employee_capture/; then set product_gates[name].min_level and worker_level from that reading.",
+          "work_plan_template_hint": "crop_strawberry.png"
+        },
+        {
+          "name": "卷心菜",
+          "status": "needs_live_level_recording",
+          "eligibility": "needs_live_recording",
+          "min_level": null,
+          "note": "Icon appeared unlocked on this worker dialog but was not added to schedulable products (registry name / level threshold not verified). Open employee list -> work plan for the slot; note worker level on the card/header; confirm the crop icon is unlocked (not grey); screenshot to .tmp/employee_capture/; then set product_gates[name].min_level and worker_level from that reading.",
+          "work_plan_template_hint": "crop_cabbage.png"
+        }
+      ]
+    },
+    {
+      "id": "field_2",
+      "label": "农田2",
+      "worker": "卷发员工",
+      "capacity": 50,
+      "observed_energy": 7285,
+      "worker_level": null,
+      "worker_level_status": "needs_live_recording",
+      "products": [
+        "番茄",
+        "小麦",
+        "玉米",
+        "甘蔗",
+        "土豆"
+      ],
+      "product_gates": {
+        "番茄": {
+          "min_level": null,
+          "eligibility": "observed_unlocked"
+        },
+        "小麦": {
+          "min_level": null,
+          "eligibility": "observed_unlocked"
+        },
+        "玉米": {
+          "min_level": null,
+          "eligibility": "observed_unlocked"
+        },
+        "甘蔗": {
+          "min_level": null,
+          "eligibility": "observed_unlocked"
+        },
+        "土豆": {
+          "min_level": null,
+          "eligibility": "observed_unlocked"
+        }
+      }
+    },
+    {
+      "id": "field_3",
+      "label": "农田3",
+      "worker": "长颈鹿员工",
+      "capacity": 50,
+      "observed_energy": 7065,
+      "worker_level": null,
+      "worker_level_status": "needs_live_recording",
+      "products": [
+        "番茄",
+        "小麦",
+        "玉米",
+        "甘蔗",
+        "土豆"
+      ],
+      "product_gates": {
+        "番茄": {
+          "min_level": null,
+          "eligibility": "observed_unlocked"
+        },
+        "小麦": {
+          "min_level": null,
+          "eligibility": "observed_unlocked"
+        },
+        "玉米": {
+          "min_level": null,
+          "eligibility": "observed_unlocked"
+        },
+        "甘蔗": {
+          "min_level": null,
+          "eligibility": "observed_unlocked"
+        },
+        "土豆": {
+          "min_level": null,
+          "eligibility": "observed_unlocked"
+        }
+      }
+    },
+    {
+      "id": "ranch_1",
+      "label": "牧场1",
+      "worker": "黑白猫员工",
+      "capacity": 56,
+      "observed_energy": 7063,
+      "worker_level": null,
+      "worker_level_status": "needs_live_recording",
+      "products": [
+        "牛肉",
+        "鸡蛋",
+        "猪肉"
+      ],
+      "product_gates": {
+        "牛肉": {
+          "min_level": null,
+          "eligibility": "observed_unlocked"
+        },
+        "鸡蛋": {
+          "min_level": null,
+          "eligibility": "observed_unlocked"
+        },
+        "猪肉": {
+          "min_level": null,
+          "eligibility": "observed_unlocked"
+        }
+      },
+      "locked": [
+        "羊肉",
+        "牛奶"
+      ],
+      "locked_gates": {
+        "羊肉": {
+          "min_level": null,
+          "eligibility": "locked_or_level_gated",
+          "note": "Visible but locked in work-plan at observation; record worker_level + unlock level before scheduling."
+        },
+        "牛奶": {
+          "min_level": null,
+          "eligibility": "locked_or_level_gated",
+          "note": "Visible but locked in work-plan at observation; record worker_level + unlock level before scheduling."
+        }
+      }
+    },
+    {
+      "id": "ranch_2",
+      "label": "牧场2",
+      "worker": "鹿角员工",
+      "capacity": 50,
+      "observed_energy": 12538,
+      "worker_level": null,
+      "worker_level_status": "needs_live_recording",
+      "products": [
+        "牛肉",
+        "鸡蛋",
+        "猪肉",
+        "羊肉",
+        "牛奶"
+      ],
+      "product_gates": {
+        "牛肉": {
+          "min_level": null,
+          "eligibility": "observed_unlocked"
+        },
+        "鸡蛋": {
+          "min_level": null,
+          "eligibility": "observed_unlocked"
+        },
+        "猪肉": {
+          "min_level": null,
+          "eligibility": "observed_unlocked"
+        },
+        "羊肉": {
+          "min_level": null,
+          "eligibility": "observed_unlocked"
+        },
+        "牛奶": {
+          "min_level": null,
+          "eligibility": "observed_unlocked"
+        }
+      }
+    },
+    {
+      "id": "orchard_1",
+      "label": "果园1",
+      "worker": "白色员工",
+      "capacity": 50,
+      "observed_energy": 8155,
+      "worker_level": null,
+      "worker_level_status": "needs_live_recording",
+      "products": [
+        "苹果",
+        "黄桃",
+        "柠檬",
+        "椰子"
+      ],
+      "product_gates": {
+        "苹果": {
+          "min_level": null,
+          "eligibility": "observed_unlocked"
+        },
+        "黄桃": {
+          "min_level": null,
+          "eligibility": "observed_unlocked"
+        },
+        "柠檬": {
+          "min_level": null,
+          "eligibility": "observed_unlocked"
+        },
+        "椰子": {
+          "min_level": null,
+          "eligibility": "observed_unlocked"
+        }
+      }
+    },
+    {
+      "id": "orchard_2",
+      "label": "果园2",
+      "worker": "粉色员工",
+      "capacity": 46,
+      "observed_energy": 6742,
+      "worker_level": null,
+      "worker_level_status": "needs_live_recording",
+      "products": [
+        "苹果"
+      ],
+      "product_gates": {
+        "苹果": {
+          "min_level": null,
+          "eligibility": "observed_unlocked"
+        }
+      },
+      "locked": [
+        "黄桃",
+        "柠檬",
+        "椰子"
+      ],
+      "locked_gates": {
+        "黄桃": {
+          "min_level": null,
+          "eligibility": "locked_or_level_gated",
+          "note": "Visible but locked in work-plan at observation; record worker_level + unlock level before scheduling."
+        },
+        "柠檬": {
+          "min_level": null,
+          "eligibility": "locked_or_level_gated",
+          "note": "Visible but locked in work-plan at observation; record worker_level + unlock level before scheduling."
+        },
+        "椰子": {
+          "min_level": null,
+          "eligibility": "locked_or_level_gated",
+          "note": "Visible but locked in work-plan at observation; record worker_level + unlock level before scheduling."
+        }
+      }
+    }
+  ],
+  "pending_capabilities": [
+    {
+      "name": "红皮土豆",
+      "status": "needs_live_recording",
+      "eligibility": "needs_live_recording",
+      "min_level": null,
+      "route_hint": "field",
+      "how_to_record": "Open employee list -> work plan for the slot; note worker level on the card/header; confirm the crop icon is unlocked (not grey); screenshot to .tmp/employee_capture/; then set product_gates[name].min_level and worker_level from that reading.",
+      "note": "Present in backpack registry / orders but not verified on any employee work-plan at a known level."
+    },
+    {
+      "name": "白玉草莓",
+      "status": "needs_live_recording",
+      "eligibility": "needs_live_recording",
+      "min_level": null,
+      "route_hint": "field",
+      "how_to_record": "Open employee list -> work plan for the slot; note worker level on the card/header; confirm the crop icon is unlocked (not grey); screenshot to .tmp/employee_capture/; then set product_gates[name].min_level and worker_level from that reading.",
+      "note": "Present in backpack registry / orders but not verified on any employee work-plan at a known level."
+    },
+    {
+      "name": "山鸡肉",
+      "status": "needs_live_recording",
+      "eligibility": "needs_live_recording",
+      "min_level": null,
+      "route_hint": "livestock/ranch",
+      "how_to_record": "Open employee list -> work plan for the slot; note worker level on the card/header; confirm the crop icon is unlocked (not grey); screenshot to .tmp/employee_capture/; then set product_gates[name].min_level and worker_level from that reading.",
+      "note": "Present in backpack registry / orders but not verified on any employee work-plan at a known level."
+    },
+    {
+      "name": "青苹果",
+      "status": "needs_live_recording",
+      "eligibility": "needs_live_recording",
+      "min_level": null,
+      "route_hint": "orchard",
+      "how_to_record": "Open employee list -> work plan for the slot; note worker level on the card/header; confirm the crop icon is unlocked (not grey); screenshot to .tmp/employee_capture/; then set product_gates[name].min_level and worker_level from that reading.",
+      "note": "Present in backpack registry / orders but not verified on any employee work-plan at a known level."
+    },
+    {
+      "name": "红薯",
+      "status": "needs_live_recording",
+      "eligibility": "needs_live_recording",
+      "min_level": null,
+      "route_hint": "field",
+      "how_to_record": "Open employee list -> work plan for the slot; note worker level on the card/header; confirm the crop icon is unlocked (not grey); screenshot to .tmp/employee_capture/; then set product_gates[name].min_level and worker_level from that reading.",
+      "note": "Present in backpack registry / orders but not verified on any employee work-plan at a known level."
+    },
+    {
+      "name": "水稻",
+      "status": "needs_live_recording",
+      "eligibility": "needs_live_recording",
+      "min_level": null,
+      "route_hint": "field",
+      "note": "2026-10-16 已确认玩家种植菜单解锁；员工工作计划可用性尚未实测。"
+    },
+    {
+      "name": "辣椒",
+      "status": "needs_live_recording",
+      "eligibility": "needs_live_recording",
+      "min_level": null,
+      "route_hint": "field",
+      "note": "2026-10-16 已确认玩家种植菜单解锁；员工工作计划可用性尚未实测。"
+    },
+    {
+      "name": "鱼肉",
+      "status": "unsupported_order_product",
+      "eligibility": "unsupported",
+      "min_level": null,
+      "note": "Fish is not an employee production route; ignore before allocation."
+    }
+  ],
+  "uncovered_registry_products": [
+    "红皮土豆",
+    "白玉草莓",
+    "山鸡肉",
+    "青苹果",
+    "红薯",
+    "水稻",
+    "辣椒",
+    "鱼肉"
+  ]
+}
