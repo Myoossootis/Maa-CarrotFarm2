@@ -49,13 +49,14 @@ class DeliveryTests(unittest.TestCase):
         self.assertTrue((self.path.parent / 'receipts' / (complete['operation_id'] + '.json')).exists())
 
     def test_changed_costs_identity_stock_or_multiplier_cannot_reserve(self):
-        for change in ('uid', 'slot', 'count', 'stock', 'batch'):
+        for change in ('uid', 'slot', 'count', 'stock', 'batch', 'version'):
             current = data(); items = [dict(row) for row in ITEMS]
             if change == 'uid': current['orders'][0]['uid'] = 99
             if change == 'slot': current['orders'][0]['slot'] = 2
             if change == 'count': current['orders'][0]['costs'][0]['count'] = 3
             if change == 'stock': current['inventory']['records'][0]['count'] = 31
             if change == 'batch': items[0]['batch_count'] = 1
+            if change == 'version': current['packageVersion'] = '91'
             with self.assertRaises(journal.decoded.DecodeError):
                 journal.reserve(items, 1, current, self.path)
             self.assertFalse(self.path.exists())

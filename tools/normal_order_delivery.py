@@ -30,6 +30,8 @@ def reserve(items, number, data, path=PATH):
     if old and old['status'] != 'completed':
         raise decoded.DecodeError('Unresolved normal delivery; no new acceptance')
     decoded.validate(data)
+    if data['packageVersion'] != '90':
+        raise decoded.DecodeError('Normal delivery package version is unverified')
     uids = {item['game_order_uid'] for item in items}
     if len(uids) != 1 or not 2 <= len(items) <= 4:
         raise decoded.DecodeError('Normal delivery needs one UID and a complete recipe')
@@ -51,7 +53,7 @@ def reserve(items, number, data, path=PATH):
 
 def recover(receipt, data, path=PATH):
     decoded.validate(data)
-    if receipt['package_version'] != data['packageVersion']:
+    if data['packageVersion'] != '90' or receipt['package_version'] != data['packageVersion']:
         raise decoded.DecodeError('Normal delivery version changed; no replay')
     if receipt['status'] == 'reward_intent':
         raise decoded.DecodeError('Unresolved normal reward input; no repeated claim or acceptance')
@@ -65,6 +67,8 @@ def recover(receipt, data, path=PATH):
 
 def reserve_reward(receipt, data, path=PATH):
     decoded.validate(data)
+    if data['packageVersion'] != '90' or receipt['package_version'] != data['packageVersion']:
+        raise decoded.DecodeError('Normal reward package version changed')
     order = next((row for row in data['orders'] if row['uid'] == receipt['uid'] and row['category'] == 'normal'), None)
     if receipt['status'] != 'accepted' or not order or order['statusCode'] != 3:
         raise decoded.DecodeError('Normal reward UID or success state not confirmed')
@@ -75,6 +79,8 @@ def reserve_reward(receipt, data, path=PATH):
 
 def complete(receipt, data, path=PATH):
     decoded.validate(data)
+    if data['packageVersion'] != '90' or receipt['package_version'] != data['packageVersion']:
+        raise decoded.DecodeError('Normal reward package version changed')
     order = next((row for row in data['orders'] if row['uid'] == receipt['uid']), None)
     slot = next((row for row in data['orders'] if row['category'] == 'normal' and row['slot'] == receipt['order']), None)
     if (receipt['status'] != 'reward_intent' or not slot or slot['statusCode'] != 1

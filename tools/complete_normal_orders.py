@@ -313,9 +313,12 @@ def main() -> int:
         ) + "\n",
         encoding="utf-8",
     )
-    pending_delivery = delivery.load() if decoded.enabled() else None
+    startup_data = decoded.snapshot() if decoded.enabled() else None
+    if startup_data is not None and startup_data['packageVersion'] != '90':
+        raise decoded.DecodeError('Normal order workflow package version is unverified; no UI input')
+    pending_delivery = delivery.load() if startup_data is not None else None
     if pending_delivery and pending_delivery['status'] != 'completed':
-        pending_delivery = delivery.recover(pending_delivery, decoded.snapshot())
+        pending_delivery = delivery.recover(pending_delivery, startup_data)
     products = load_products()
     controller = Win32Controller(
         hWnd=find_window(),

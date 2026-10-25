@@ -32,7 +32,7 @@ class NormalDeliveryUITests(unittest.TestCase):
             stack.enter_context(patch.object(sys,'argv',['normal','--prepare-only']))
             stack.enter_context(patch('sys.stdout',io.StringIO()))
             stack.enter_context(patch.object(normal.decoded,'enabled',return_value=True))
-            stack.enter_context(patch.object(normal.decoded,'snapshot'))
+            stack.enter_context(patch.object(normal.decoded,'snapshot',return_value={'packageVersion':'90'}))
             stack.enter_context(patch.object(normal.delivery,'load',return_value=pending))
             stack.enter_context(patch.object(normal.delivery,'recover',return_value=pending))
             finish=stack.enter_context(patch.object(normal,'finish_normal_delivery',return_value=completed))
@@ -53,12 +53,21 @@ class NormalDeliveryUITests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as folder,patch.object(normal,'RESULT',Path(folder)/'result.json'), \
                 patch.object(sys,'argv',['normal','--prepare-only']), \
                 patch.object(normal.decoded,'enabled',return_value=True), \
-                patch.object(normal.decoded,'snapshot'), \
+                patch.object(normal.decoded,'snapshot',return_value={'packageVersion':'90'}), \
                 patch.object(normal.delivery,'load',return_value={'status':'accept_intent'}), \
                 patch.object(normal.delivery,'recover',side_effect=normal.decoded.DecodeError('Unresolved')), \
                 patch.object(normal,'find_window') as connect:
             with self.assertRaisesRegex(normal.decoded.DecodeError,'Unresolved'):normal.main()
             connect.assert_not_called()
+
+    def test_unknown_version_blocks_before_game_connection_or_receipt_read(self):
+        with tempfile.TemporaryDirectory() as folder,patch.object(normal,'RESULT',Path(folder)/'result.json'), \
+                patch.object(sys,'argv',['normal','--prepare-only']), \
+                patch.object(normal.decoded,'enabled',return_value=True), \
+                patch.object(normal.decoded,'snapshot',return_value={'packageVersion':'91'}), \
+                patch.object(normal.delivery,'load') as receipt,patch.object(normal,'find_window') as connect:
+            with self.assertRaisesRegex(normal.decoded.DecodeError,'version is unverified'):normal.main()
+            connect.assert_not_called();receipt.assert_not_called()
 
 
 if __name__=='__main__':unittest.main()
