@@ -402,7 +402,8 @@ def run_batch(
             _write(delivery)
             return 0
         stage = 'board_availability'
-        availability = probe_availability(tasker, controller, order_type)
+        required_count = requested.get('batch_count', 6) if requested else 6
+        availability = probe_availability(tasker, controller, order_type, required_count=required_count)
         if availability['status'] == 'board_unknown':
             raise RuntimeError(f'board_unknown: {availability}')
         if availability['status'] in WAITING_STATES:
@@ -471,9 +472,11 @@ def run_batch(
             })
             return 0
 
-        _log(f"[交单] 类型={label} 点击接受（完成{batch_count}次）")
         stage = "accept"
         if decoded.enabled():
+            availability = probe_availability(tasker, controller, order_type, required_count=batch_count)
+            if availability['status'] != 'available':
+                raise decoded.DecodeError(f'Order capacity changed before accept; no click sent: {availability}')
             accept_frame = screenshot(controller)
             require_decoded_card_selection(accept_frame)
             if (not completion_control_visible(accept_frame)
@@ -486,6 +489,7 @@ def run_batch(
                             submitted=[dict(order=order_number, items=items, batch_count=batch_count,
                                             acceptance_confirmed=False)], automatic_retry_allowed=False)
             write_json(delivery_path, delivery)
+        _log(f"[交单] 类型={label} 准备接受（完成{batch_count}次）")
         _click_accept(tasker, controller)
         confirmation = finish_order_acceptance(tasker, controller, items) if decoded.enabled() else None
         submitted.append({

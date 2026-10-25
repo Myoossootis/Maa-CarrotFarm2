@@ -182,6 +182,29 @@ function inventoryOf(bag,config,now){
   return {recordCount:records.length,products:[...totals].map(([itemId,count])=>({itemId,name:config.name(itemId),count})),records};
 }
 
+function orderCapacityOf(inventory,config){
+  // Verified against the v90 count display and accept guards. This is the
+  // current token balance, separate from our historical completion ledger.
+  const result={complete:false,semanticsPackageVersion:String(config.version),entries:[]};
+  if(String(config.version)!=='90') return {...result,reason:'unverified_package_version'};
+  for(const [category,orderId] of [['party',101],['takeout',102]]){
+    const tokenId=Number(extraOf(config.items.get(orderId)?.params).ref_id);
+    const token=config.items.get(tokenId),output=config.outputs?.get(Number(extraOf(token?.params).output_id));
+    if(!Number.isSafeInteger(tokenId)||token?.item_type!==24||output?.item_id!==tokenId||output.type!==2||
+       !Number.isSafeInteger(output.limit)||output.limit<1||output.limit>6)
+      throw Error('Invalid order capacity configuration: '+category);
+    let remaining=0;
+    for(const record of inventory.records.filter(x=>x.itemId===tokenId)){
+      if(!Number.isSafeInteger(record.count)||record.count<0) throw Error('Invalid order capacity count');
+      remaining+=record.count;
+    }
+    if(!Number.isSafeInteger(remaining)) throw Error('Invalid order capacity total');
+    result.entries.push({category,tokenItemId:tokenId,remaining,limit:output.limit});
+  }
+  result.complete=true;
+  return result;
+}
+
 function ordersOf(bag,config,inventory){
   const stock=new Map(inventory.products.map(x=>[x.itemId,x.count]));
   return [{id:1837,category:'normal'},{id:101,category:'party'},{id:102,category:'takeout'}].flatMap(({id,category})=>
@@ -315,7 +338,10 @@ function main(){
   const now=Math.floor(Date.now()/1000),data={};
   const inventory=stage('inventoryMs',()=>inventoryOf(state.bag,config,now));
   if(['inventory','automation','all'].includes(options.mode)) data.inventory=inventory;
-  if(['orders','automation','all'].includes(options.mode)) data.orders=stage('ordersMs',()=>ordersOf(state.bag,config,inventory));
+  if(['orders','automation','all'].includes(options.mode)){
+    data.orders=stage('ordersMs',()=>ordersOf(state.bag,config,inventory));
+    data.orderCapacity=stage('orderCapacityMs',()=>orderCapacityOf(inventory,config));
+  }
   if(['employees','automation','all'].includes(options.mode)) data.employees=stage('employeesMs',()=>employeesOf(state.bag,state.common,config));
   if(['production','automation','all'].includes(options.mode)) data.production=stage('productionMs',()=>productionOf(inventory,config,now,state.common));
   if(['family','all'].includes(options.mode)) data.family=stage('familyMs',()=>familyOf(options,processes,hints,state.bag,config,now));
@@ -331,5 +357,5 @@ function main(){
   process.stderr.write(JSON.stringify({mode:options.mode,timings,output:options.output||'stdout'})+'\n');
 }
 
-module.exports={readv,crc32,parseMMKV,unwrapValue,extraOf,progressOf,familyFromRecords,inventoryOf,ordersOf,employeesOf};
+module.exports={readv,crc32,parseMMKV,unwrapValue,extraOf,progressOf,familyFromRecords,inventoryOf,ordersOf,employeesOf,orderCapacityOf};
 if(require.main===module){try{main();}catch(error){process.stderr.write(JSON.stringify({error:error.message,readOnly:true})+'\n');process.exitCode=1;}}

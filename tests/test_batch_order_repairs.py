@@ -61,7 +61,7 @@ class BridgeLogTests(unittest.TestCase):
 
 
 class BatchFailureTests(unittest.TestCase):
-    def acceptance_failure(self, *, checked=True, count=6, confirmation_error=None):
+    def acceptance_failure(self, *, checked=True, count=6, confirmation_error=None, capacity_after=None):
         items = [dict(name=name, actual=12, required=12, missing=0, satisfied=True)
                  for name in ('小麦', '玉米')]
         with tempfile.TemporaryDirectory(dir=ROOT / '.tmp') as folder, ExitStack() as stack:
@@ -75,7 +75,8 @@ class BatchFailureTests(unittest.TestCase):
             stack.enter_context(patch.object(batch.decoded, 'enabled', return_value=True))
             stack.enter_context(patch.object(batch.decoded, 'assert_order_unchanged', return_value=items))
             stack.enter_context(patch.object(batch, 'open_orders', return_value=True))
-            stack.enter_context(patch.object(batch, 'probe_availability', return_value={'status': 'available'}))
+            stack.enter_context(patch.object(batch, 'probe_availability', return_value={'status': 'available'},
+                side_effect=[{'status': 'available'}, {'status': capacity_after}] if capacity_after else None))
             stack.enter_context(patch.object(batch, '_select_recipe', return_value=(items, 7, (155, 782), 6)))
             stack.enter_context(patch.object(batch, '_enrich', return_value={}))
             stack.enter_context(patch.object(batch, 'screenshot', return_value=object()))
@@ -109,6 +110,10 @@ class BatchFailureTests(unittest.TestCase):
         for checked, count in ((False, 6), (True, 5)):
             with self.subTest(checked=checked, count=count):
                 self.assertEqual(self.acceptance_failure(checked=checked, count=count), (0, 0))
+
+    def test_capacity_changed_before_accept_sends_no_accept_or_intent(self):
+        for status in ('order_capacity_exhausted', 'order_batch_unavailable', 'board_unknown'):
+            self.assertEqual(self.acceptance_failure(capacity_after=status), (0, 0))
 
     def test_unconfirmed_debit_after_click_never_writes_accepted_checkpoint(self):
         self.assertEqual(self.acceptance_failure(confirmation_error=batch.decoded.DecodeError('no debit')), (1, 1))

@@ -73,6 +73,26 @@ def item_count(item_id, data=None):
     return sum(x['count'] for x in data['inventory']['records'] if x['itemId'] == item_id)
 
 
+def order_capacity(kind, data=None):
+    data = snapshot() if data is None else data
+    validate(data)
+    capacity = data.get('orderCapacity') or {}
+    if not isinstance(capacity, dict):
+        raise DecodeError('Order capacity schema is invalid')
+    entries = capacity.get('entries', [])
+    if (kind not in ('party', 'takeout') or data.get('packageVersion') != '90'
+            or capacity.get('complete') is not True or capacity.get('semanticsPackageVersion') != '90'
+            or not isinstance(entries, list) or len(entries) != 2 or not all(isinstance(row, dict) for row in entries)
+            or {row.get('category') for row in entries} != {'party', 'takeout'}):
+        raise DecodeError('Order capacity is missing, incomplete or unverified')
+    for row in entries:
+        if (row.get('tokenItemId') != {'party': 103, 'takeout': 104}[row['category']]
+                or type(row.get('remaining')) is not int or not 0 <= row['remaining'] <= 2**53 - 1
+                or type(row.get('limit')) is not int or not 1 <= row['limit'] <= 6):
+            raise DecodeError('Order capacity count or identity is invalid')
+    return next(row for row in entries if row['category'] == kind)
+
+
 def select_order(kind, number, count, expected_uid=None):
     if kind not in ('normal', 'party', 'takeout') or type(number) is not int or not 1 <= number <= 9:
         raise DecodeError('Explicit decoded order category and slot are required')
