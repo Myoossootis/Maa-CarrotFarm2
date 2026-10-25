@@ -75,7 +75,7 @@ def enforce_first_order(controller, tasker, products, kind, evidence, progress, 
         progress['stage'] = 'board_availability'
         frame = screenshot(controller)
         cv2.imwrite(str(evidence / 'availability.png'), frame)
-        availability = probe_availability(tasker, controller, kind)
+        availability = probe_availability(tasker, controller, kind, required_count=6)
         progress['board_availability'] = availability
         if availability['status'] == 'board_unknown':
             raise RuntimeError(f'board_unknown: {availability}')

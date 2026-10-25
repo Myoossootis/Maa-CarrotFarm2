@@ -8,18 +8,20 @@ import cv2
 import numpy as np
 
 try:
+    from . import decoded_runtime as decoded
     from .ensure_ranch_feed import recognized_text
     from .refresh_order import card_image, card_selected, card_pending
     from .order_template_click import template_hit
     from .scan_normal_orders import screenshot
 except ImportError:
+    import decoded_runtime as decoded
     from ensure_ranch_feed import recognized_text
     from refresh_order import card_image, card_selected, card_pending
     from order_template_click import template_hit
     from scan_normal_orders import screenshot
 
 ROOT = Path(__file__).resolve().parents[1]
-WAITING_STATES = {'board_unavailable', 'board_loading'}
+WAITING_STATES = {'board_unavailable', 'board_loading', 'order_capacity_exhausted', 'order_batch_unavailable'}
 
 
 def empty_grid(frame):
@@ -70,7 +72,7 @@ def read_availability(tasker, frame, kind):
     return result
 
 
-def probe_availability(tasker, controller, kind):
+def probe_availability(tasker, controller, kind, *, required_count=None):
     """Bounded fresh reads only: tab-ready can precede card loading.
 
     The limit caption is also present on populated boards. It cannot establish
@@ -89,4 +91,18 @@ def probe_availability(tasker, controller, kind):
             and len({item['caption'] for item in observations}) == 1):
         current.update(status='board_unavailable', reason='confirmed_empty_board')
     current['observations'] = observations
+    if current['status'] == 'available' and required_count is not None:
+        if type(required_count) is not int or not 1 <= required_count <= 6 or not decoded.enabled():
+            raise decoded.DecodeError('Order capacity check requires decoded mode and an explicit valid count')
+        capacity = decoded.order_capacity(kind)
+        counter = current.get('ui_counter')
+        current['capacity'] = capacity
+        current['required_count'] = required_count
+        if (not isinstance(counter, list) or len(counter) != 2 or any(type(x) is not int for x in counter)
+                or counter != [capacity['remaining'], capacity['limit']]):
+            current.update(status='board_unknown', reason='capacity_ui_cache_mismatch')
+        elif capacity['remaining'] == 0:
+            current.update(status='order_capacity_exhausted', reason='confirmed_zero_order_tokens')
+        elif capacity['remaining'] < required_count:
+            current.update(status='order_batch_unavailable', reason='insufficient_order_tokens_for_requested_batch')
     return current

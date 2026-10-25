@@ -2,6 +2,33 @@
 const test=require('node:test');
 const assert=require('node:assert/strict');
 const {parseMMKV,crc32,progressOf,familyFromRecords,employeesOf,ordersOf}=require('./read_only_game_state.cjs');
+const {orderCapacityOf,inventoryOf}=require('./read_only_game_state.cjs');
+
+function capacityConfig(){return {version:'90',name:id=>String(id),items:new Map([
+  [101,{params:'ref_id,103'}],[102,{params:'ref_id,104'}],
+  [103,{item_type:24,params:'output_id,501'}],[104,{item_type:24,params:'output_id,502'}]
+]),outputs:new Map([[501,{item_id:103,type:2,limit:6}],[502,{item_id:104,type:2,limit:6}]])};}
+
+test('order capacity uses linked tokens, sums records and keeps zero separate from unknown',()=>{
+  const config=capacityConfig(),inventory={records:[{itemId:103,count:2},{itemId:103,count:4},{itemId:104,count:1}]};
+  const result=orderCapacityOf(inventory,config);
+  assert.equal(result.complete,true);
+  assert.deepEqual(result.entries.map(x=>[x.category,x.tokenItemId,x.remaining,x.limit]),[['party',103,6,6],['takeout',104,1,6]]);
+  assert.equal(orderCapacityOf({records:[]},config).entries[0].remaining,0);
+  config.version='91';
+  assert.equal(orderCapacityOf({records:[]},config).complete,false);
+  assert.deepEqual(orderCapacityOf({records:[]},config).entries,[]);
+});
+
+test('expired order tokens do not grant capacity and corrupt mappings or counts fail closed',()=>{
+  const config=capacityConfig();
+  const inventory=inventoryOf([[1,103,6,'',99],[2,104,3,'',101]],config,100);
+  assert.deepEqual(orderCapacityOf(inventory,config).entries.map(x=>x.remaining),[0,3]);
+  for(const count of [-1,NaN,1.5,Number.MAX_SAFE_INTEGER+1])
+    assert.throws(()=>orderCapacityOf({records:[{itemId:103,count}]},config),/capacity/);
+  config.outputs.get(501).item_id=104;
+  assert.throws(()=>orderCapacityOf({records:[]},config),/capacity/);
+});
 
 function varint(value){const bytes=[];do{bytes.push((value&127)|(value>127?128:0));value>>>=7;}while(value);return Buffer.from(bytes);}
 function entry(key,value){const a=Buffer.from(key),b=Buffer.from(value);return Buffer.concat([varint(a.length),a,varint(b.length),b]);}

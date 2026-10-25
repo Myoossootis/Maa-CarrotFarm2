@@ -111,7 +111,7 @@ class BoardAvailabilityTests(unittest.TestCase):
 
 class BoardGateTests(unittest.TestCase):
     def test_first_order_policy_stops_before_select_or_refresh(self):
-        for status in ('board_unavailable', 'board_loading', 'board_unknown'):
+        for status in (*sorted(board.WAITING_STATES), 'board_unknown'):
             result = dict(status=status, reason='fixture', next_available=None)
             with tempfile.TemporaryDirectory() as folder, ExitStack() as stack:
                 stack.enter_context(patch.object(first, 'open_orders', return_value=True))
@@ -129,7 +129,7 @@ class BoardGateTests(unittest.TestCase):
                 refresh.assert_not_called()
 
     def test_batch_wait_invalidates_cached_target_without_accepting_or_rewriting_delivery(self):
-        for status in ('board_unavailable', 'board_loading', 'board_unknown'):
+        for status in (*sorted(board.WAITING_STATES), 'board_unknown'):
             with tempfile.TemporaryDirectory() as folder, ExitStack() as stack:
                 folder = Path(folder)
                 delivery = folder / 'latest_party_delivery.json'
@@ -164,14 +164,14 @@ class BoardGateTests(unittest.TestCase):
                 accept.assert_not_called()
 
     def test_scan_stops_after_one_waiting_pass(self):
-        for status in ('board_unavailable', 'board_loading'):
+        for status in sorted(board.WAITING_STATES):
             result = dict(status=status, target_order=None)
             with patch.object(cycle, 'run_script') as run, patch.object(cycle, 'read_json', return_value=result), patch('sys.stdout', io.StringIO()):
                 self.assertEqual(cycle.scan_for_target(6, 'party'), result)
                 self.assertEqual(run.call_count, 1)
 
     def test_daily_wait_has_no_quota_write_or_invented_resume_time(self):
-        for status in ('board_unavailable', 'board_loading'):
+        for status in sorted(board.WAITING_STATES):
             summary = dict(_exit_code=0, status='waiting', rounds=[dict(status='waiting', scan=dict(
                 status=status, board_availability=dict(caption='fixture', next_available=None)))])
             gate = MagicMock(can_start=True, in_cooldown=False)

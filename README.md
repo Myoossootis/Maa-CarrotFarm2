@@ -2,7 +2,7 @@
 
 基于 [MaaFramework](https://github.com/MaaXYZ/MaaFramework) 的 **Win32 后台**自动化：FramePool 截图 + PostMessage 点击，不抢前台鼠标。
 
-开发版本 **0.7.5**：修复裁剪截图正式入口与灰色聚会页签定位，移除批次控件缺失时的坐标兜底和未确认重试；当前批次控件不可见，交单仍阻塞。开发约定见 [CONTRIBUTING.md](CONTRIBUTING.md)，交付写入 [版本记录](CHANGELOG.md)，后续按 [交付路线](docs/DELIVERY_ROADMAP.md) 推进。
+开发版本 **0.7.6**：聚会／外卖次数余额与UI计数交叉核对，余额耗尽或不足批次则等待；当前两类余额均为0。返回农场的旧校验仍待修复，业务闭环未验收。开发约定见 [CONTRIBUTING.md](CONTRIBUTING.md)，交付写入 [版本记录](CHANGELOG.md)，后续按 [交付路线](docs/DELIVERY_ROADMAP.md) 推进。
 
 > **方案决定（2026-10-25）**：Cocos 内部调用、Frida 注入及 WMPF 调试桥实验已封存，**不纳入使用脚本方案**。现有脚本维持原状；详见[封存说明](docs/ARCHIVED_COCOS_RESEARCH_2026-10-25.md)。
 
