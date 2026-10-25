@@ -84,7 +84,7 @@ def check_all_idle(controller: Win32Controller, tasker: Tasker, jobs: list[dict]
         close_plan_dialog(controller)
 
 
-def idle_allocation(controller, tasker, targets):
+def idle_allocation(controller, tasker, targets, *, allow_partial=False):
     """Read candidate plans without collecting, resetting or overwriting them."""
     aliases = load_capabilities().get("product_aliases", {})
     products = {normalize_product_name(target["name"], aliases) for target in targets}
@@ -117,6 +117,11 @@ def idle_allocation(controller, tasker, targets):
             busy.append({"slot_id": slot_id, "state": "active", "capacity": observed})
     result = allocate(targets, idle)
     result["busy_slots_preserved"] = busy
+    if (allow_partial and not result['ready'] and result['jobs'] and result['unmet']
+            and all(entry['reason'] == 'insufficient_employee_capacity' for entry in result['unmet'])):
+        # Ready describes this bounded wave, never completion of the full order.
+        result.update(ready=True, partial_wave=True, order_fulfilled_after_wave=False)
+        print(f"[排产] 本批按空闲容量补料，剩余缺口收取后重新扫描：{result['unmet']}", flush=True)
     if not result["ready"]:
         # allocate() only sees idle slots; if capable workers exist but are busy,
         # it reports no_employee_capability — rewrite for clarity.
@@ -134,8 +139,8 @@ def idle_allocation(controller, tasker, targets):
     return result
 
 
-def apply_jobs(allocation: dict, checkpoint=None, operation=None) -> dict:
-    if not allocation["ready"]:
+def apply_jobs(allocation: dict, checkpoint=None, operation=None, *, allow_partial=False) -> dict:
+    if not allocation["ready"] and not allow_partial:
         raise RuntimeError(f"order cannot be fully allocated: {allocation['unmet']}")
     controller = Win32Controller(
         hWnd=find_window(),
@@ -163,7 +168,7 @@ def apply_jobs(allocation: dict, checkpoint=None, operation=None) -> dict:
         if operation is None:
             if decoded.enabled():
                 operations.validate_target(allocation, decoded.snapshot())
-            available = idle_allocation(controller, tasker, allocation["production_targets"])
+            available = idle_allocation(controller, tasker, allocation["production_targets"], allow_partial=allow_partial)
             allocation.update(available)
             print(f"preserved existing plans: {available['busy_slots_preserved']}", flush=True)
             if decoded.enabled():
@@ -243,7 +248,10 @@ def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--apply", action="store_true", help="save plans in the game")
     parser.add_argument('--resume', action='store_true', help='resume the bound active assignment, never replay a save')
+    parser.add_argument('--allow-partial', action='store_true', help='one capacity-limited wave; rescan after collection before further production')
     args = parser.parse_args()
+    if args.allow_partial and not decoded.enabled():
+        parser.error('Partial waves require the formal decoded worker and bound operation records')
     operation = operations.active() if args.apply and decoded.enabled() else None
     if operation and operation['status'] == 'collected':
         operation = None
@@ -272,7 +280,7 @@ def main() -> int:
         write_json(destination, record)
     checkpoint([], None)
     try:
-        result = apply_jobs(allocation, checkpoint, operation)
+        result = apply_jobs(allocation, checkpoint, operation, allow_partial=args.allow_partial)
     except Exception as error:
         record.update(status="failed", error=str(error))
         checkpoint(record["saved"], record["ranch_feed"])

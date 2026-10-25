@@ -98,7 +98,7 @@ def finish_production(poll, timeout, *, create=False):
     if receipt and receipt['status'] != 'completed':
         raise decoded.DecodeError('Production and pending delivery conflict; reconcile before new inputs')
     if operation is None or operation['status'] == 'applying':
-        run_script('run_employee_order_plan.py', *(['--resume'] if operation else []), '--apply')
+        run_script('run_employee_order_plan.py', *(['--resume'] if operation else []), '--allow-partial', '--apply')
         operation = employees.active()
     if not operation or operation['status'] != 'saved':
         raise decoded.DecodeError('Employee save was not confirmed; no monitoring or new order')

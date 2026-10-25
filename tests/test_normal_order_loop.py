@@ -82,6 +82,16 @@ class NormalLoopTests(unittest.TestCase):
         step.assert_called_once_with('--prepare-only')
         self.assertEqual(json.loads((self.folder/'summary.json').read_text())['completed_count'],0)
 
+    def test_two_waves_require_two_rescans_and_only_final_order_counts(self):
+        gap=dict(PREPARED,target_order=dict(order=1,missing_items=[{'missing':112}]))
+        remainder=dict(PREPARED,target_order=dict(order=1,missing_items=[{'missing':12}]))
+        step=Mock(side_effect=[gap,remainder,PREPARED,completed('one')]);produce=Mock()
+        result=loop.loop(step,self.folder,max_orders=1,produce=produce,
+                         read_receipt=lambda:{'status':'completed','operation_id':'one'})
+        self.assertEqual(produce.call_count,2)
+        self.assertEqual([c.args for c in step.call_args_list[:3]],[('--prepare-only',)]*3)
+        self.assertEqual((result['completed_orders'],result['completed_count']),(1,3))
+
 
 class ProductionResumeTests(unittest.TestCase):
     def test_saved_assignment_monitors_canonical_file_without_new_save(self):
@@ -99,7 +109,7 @@ class ProductionResumeTests(unittest.TestCase):
                 patch.object(loop.delivery,'load',return_value=None),patch.object(loop,'run_script') as run:
             with self.assertRaisesRegex(loop.decoded.DecodeError,'collection not confirmed'):
                 loop.finish_production(20,7200)
-        self.assertEqual(run.call_args_list[0].args,('run_employee_order_plan.py','--resume','--apply'))
+        self.assertEqual(run.call_args_list[0].args,('run_employee_order_plan.py','--resume','--allow-partial','--apply'))
         self.assertEqual(run.call_count,2)
 
     def test_old_completed_assignment_does_not_authorize_monitoring(self):
