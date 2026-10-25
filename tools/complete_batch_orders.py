@@ -31,6 +31,7 @@ from dismiss_offline_income import dismiss_offline_income
 from ensure_ranch_feed import recognized_text
 from allocate_employee_work import allocate
 from employee_capabilities import load_capabilities
+from runtime_state import write_json
 from order_board_helpers import ensure_returned_to_farm, confirm_sleep_or_close_shop, finish_order_acceptance
 from complete_normal_orders import claim_completed_reward, reward_overlay_visible, dismiss_reward_overlay
 from order_template_click import click_template_node, normalize_order_type, open_orders
@@ -317,6 +318,21 @@ def _wait_and_claim_reward(tasker, controller, order_type, timeout_seconds=300, 
     raise RuntimeError(f'reward_timeout: 订单已提交，尚未看到可领取奖励；禁止重复接受；证据={evidence}')
 
 
+def recover_accept_intent(delivery, path):
+    """Reconcile an interrupted accept from its debit; never send it again."""
+    if delivery.get('status') != 'accept_intent':
+        return delivery
+    if not decoded.enabled() or not delivery.get('submitted') or len(delivery['submitted']) != 1:
+        raise decoded.DecodeError('Unresolved order acceptance; decoded receipt required, no retry')
+    entry = delivery['submitted'][0]
+    if not decoded.submission_confirmed(entry['items'], decoded.snapshot()):
+        raise decoded.DecodeError('Unresolved order acceptance; preserve intent and do not reaccept')
+    entry.update(acceptance_confirmed=True, reason='accepted', recovered_by_readback=True)
+    delivery.update(status='accepted', submitted_count=1, target_order=None, reward_claimed=False)
+    write_json(path, delivery)
+    return delivery
+
+
 def run_batch(
     *,
     order_type: str,
@@ -341,6 +357,7 @@ def run_batch(
     submitted: list[dict] = []
     skipped: list[dict] = []
     try:
+        delivery = recover_accept_intent(delivery, delivery_path)
         products = load_products()
         controller = Win32Controller(
             hWnd=find_window(),
@@ -380,7 +397,7 @@ def run_batch(
             submitted = delivery['submitted']
             reward_evidence = _wait_and_claim_reward(tasker, controller, order_type, order_number=submitted[0]['order'])
             delivery.update(status='completed', reward_claimed=True, reward_evidence=reward_evidence)
-            delivery_path.write_text(json.dumps(delivery, ensure_ascii=False, indent=2), encoding='utf-8')
+            write_json(delivery_path, delivery)
             _write(delivery)
             return 0
         stage = "read_recipe"
@@ -449,6 +466,11 @@ def run_batch(
                     or batch_count > 1 and _completion_count(tasker, accept_frame) != batch_count):
                 raise decoded.DecodeError('Completion count changed before accept; no click sent')
             items = decoded.assert_order_unchanged(items)
+            delivery = dict(status='accept_intent', order_type=order_type, batch_count=batch_count,
+                            created_at_utc=datetime.now(timezone.utc).isoformat(),
+                            submitted=[dict(order=order_number, items=items, batch_count=batch_count,
+                                            acceptance_confirmed=False)], automatic_retry_allowed=False)
+            write_json(delivery_path, delivery)
         _click_accept(tasker, controller)
         confirmation = finish_order_acceptance(tasker, controller, items) if decoded.enabled() else None
         submitted.append({
@@ -462,11 +484,11 @@ def run_batch(
         _log(f"[交单] 类型={label} 结果=已提交（批量={batch_count}），等待领取奖励")
         delivery = dict(status='accepted', order_type=order_type, submitted=submitted,
                         submitted_count=1, batch_count=batch_count, target_order=None, reward_claimed=False)
-        delivery_path.write_text(json.dumps(delivery, ensure_ascii=False, indent=2), encoding='utf-8')
+        write_json(delivery_path, delivery)
         stage = 'claim_reward'
         reward_evidence = _wait_and_claim_reward(tasker, controller, order_type, order_number=order_number)
         delivery.update(status='completed', reward_claimed=True, reward_evidence=reward_evidence)
-        delivery_path.write_text(json.dumps(delivery, ensure_ascii=False, indent=2), encoding='utf-8')
+        write_json(delivery_path, delivery)
         try:
             stage = "return_to_farm_after_accept"
             ensure_returned_to_farm(tasker, controller)

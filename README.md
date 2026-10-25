@@ -2,7 +2,7 @@
 
 基于 [MaaFramework](https://github.com/MaaXYZ/MaaFramework) 的 **Win32 后台**自动化：FramePool 截图 + PostMessage 点击，不抢前台鼠标。
 
-开发版本 **0.6.5**：90 版生产解码已修复，员工排产增加物理槽位占用检查。开发约定见 [CONTRIBUTING.md](CONTRIBUTING.md)，交付写入 [版本记录](CHANGELOG.md)，后续按 [接手审计](docs/DEVELOPMENT_TAKEOVER_AUDIT_2026-10-25.md) 推进。
+开发版本 **0.7.0**：新增生产对账和单槽收取的持久化防重复记录，收紧员工页面返回识别。开发约定见 [CONTRIBUTING.md](CONTRIBUTING.md)，交付写入 [版本记录](CHANGELOG.md)，后续按 [接手审计](docs/DEVELOPMENT_TAKEOVER_AUDIT_2026-10-25.md) 推进。
 
 > **方案决定（2026-10-25）**：Cocos 内部调用、Frida 注入及 WMPF 调试桥实验已封存，**不纳入使用脚本方案**。现有脚本维持原状；详见[封存说明](docs/ARCHIVED_COCOS_RESEARCH_2026-10-25.md)。
 

@@ -11,6 +11,18 @@ FIXTURES = Path(__file__).parent / 'fixtures/employee_pages'
 
 
 class EmployeePageStateTests(unittest.TestCase):
+    def test_unrecognized_page_never_uses_color_or_blank_recovery_click(self):
+        with patch.object(m, 'screenshot', return_value=object()), patch.object(m, 'match', return_value=0), \
+             patch.object(m, 'match_nav', return_value=0), patch.object(m, 'locate_nav', return_value=(0, (0, 0))), \
+             patch.object(m, 'slot_match', return_value=(0, (0, 0))), \
+             patch.object(m, '_schedule_plan_confirm_visible', return_value=True), \
+             patch.object(m, '_field_work_plan_button_visible', return_value=True), \
+             patch.object(m.time, 'sleep'), patch.object(m.cv2, 'imwrite'), \
+             patch.object(m, '_click_close_nav') as click, patch('sys.stdout', new=__import__('io').StringIO()):
+            with self.assertRaisesRegex(RuntimeError, 'farm map was not verified'):
+                m.close_employee_menu(object())
+            click.assert_not_called()
+
     def frame(self, name):
         frame = cv2.imread(str(FIXTURES / name))
         self.assertIsNotNone(frame)
