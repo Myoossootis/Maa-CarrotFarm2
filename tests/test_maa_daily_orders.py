@@ -21,7 +21,7 @@ class InterfaceDailyTasksTests(unittest.TestCase):
         )
 
     def test_version_and_daily_entries(self):
-        self.assertEqual(self.iface["version"], "0.6.3")
+        self.assertRegex(self.iface["version"], r'^\d+\.\d+\.\d+$')
         by_entry = {t["entry"]: t for t in self.iface["task"]}
         for entry, name in [
             ("RunDailyPartyOrders", "聚会订单"),

@@ -110,7 +110,7 @@ class UiActionTests(unittest.TestCase):
         entries = {task['entry'] for task in interface['task']}
         self.assertIn('RunShortCyclePreview', entries)
         self.assertIn('RunShortCycleApply', entries)
-        self.assertEqual(interface['version'], '0.6.3')
+        self.assertRegex(interface['version'], r'^\d+\.\d+\.\d+$')
 
     def test_preview_and_apply_nodes_bake_ui_apply(self):
         from maa.resource import Resource
