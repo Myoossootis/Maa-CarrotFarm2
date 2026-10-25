@@ -1,0 +1,11 @@
+{
+    "schema_version": 1,
+    "mutations": [
+        {
+            "name": "红皮土豆",
+            "base_product": "土豆",
+            "template": "production/feed_mutation_red_potato.png",
+            "ratio": 1
+        }
+    ]
+}

@@ -1,0 +1,30 @@
+{
+    "schema_version": 1,
+    "template_match_threshold": 0.7,
+    "products": [
+        { "id": "crop_001", "name": "红皮土豆", "template": "assets/resource/image/crops/registry/crop_001.png" },
+        { "id": "crop_002", "name": "白玉草莓", "template": "assets/resource/image/crops/registry/crop_002.png" },
+        { "id": "crop_003", "name": "山鸡肉", "template": "assets/resource/image/crops/registry/crop_003.png" },
+        { "id": "crop_004", "name": "青苹果", "template": "assets/resource/image/crops/registry/crop_004.png" },
+        { "id": "crop_005", "name": "番茄", "template": "assets/resource/image/crops/registry/crop_005.png" },
+        { "id": "crop_006", "name": "小麦", "template": "assets/resource/image/crops/registry/crop_006.png" },
+        { "id": "crop_007", "name": "玉米", "template": "assets/resource/image/crops/registry/crop_007.png" },
+        { "id": "crop_008", "name": "土豆", "template": "assets/resource/image/crops/registry/crop_008.png" },
+        { "id": "crop_009", "name": "玫瑰", "template": "assets/resource/image/crops/registry/crop_009.png" },
+        { "id": "crop_010", "name": "胡萝卜", "template": "assets/resource/image/crops/registry/crop_010.png" },
+        { "id": "crop_011", "name": "红薯", "template": "assets/resource/image/crops/registry/crop_011.png" },
+        { "id": "crop_012", "name": "苹果", "template": "assets/resource/image/crops/registry/crop_012.png" },
+        { "id": "crop_013", "name": "黄桃", "template": "assets/resource/image/crops/registry/crop_013.png" },
+        { "id": "crop_014", "name": "柠檬", "template": "assets/resource/image/crops/registry/crop_014.png" },
+        { "id": "crop_015", "name": "椰子", "template": "assets/resource/image/crops/registry/crop_015.png" },
+        { "id": "crop_016", "name": "牛肉", "template": "assets/resource/image/crops/registry/crop_016.png" },
+        { "id": "crop_017", "name": "鸡蛋", "template": "assets/resource/image/crops/registry/crop_017.png" },
+        { "id": "crop_018", "name": "猪肉", "template": "assets/resource/image/crops/registry/crop_018.png" },
+        { "id": "crop_019", "name": "羊肉", "template": "assets/resource/image/crops/registry/crop_019.png" },
+        { "id": "crop_020", "name": "牛奶", "template": "assets/resource/image/crops/registry/crop_020.png" },
+        { "id": "crop_021", "name": "鱼肉", "template": "assets/resource/image/crops/registry/crop_021.png" },
+        { "id": "crop_022", "name": "甘蔗", "template": "assets/resource/image/crops/registry/crop_022.png" },
+        { "id": "crop_023", "name": "水稻", "template": "assets/resource/image/crops/registry/crop_023.png" },
+        { "id": "crop_024", "name": "辣椒", "template": "assets/resource/image/crops/registry/crop_024.png" }
+    ]
+}

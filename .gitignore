@@ -449,6 +449,33 @@ install
 
 # Tools
 tools/ImageCropper/**/*.png
+.tmp/
+.venv/
 
 config
 debug
+
+
+# --- Maa-CarrotFarm2 project ---
+.tmp/
+.venv/
+debug/
+maafw.log
+*.log
+
+# Runtime / generated catalogs (keep registry + capabilities in git)
+assets/catalog/**/latest_*.json
+assets/catalog/backpack_crops/catalog.json
+assets/catalog/backpack_crops/index.png
+assets/catalog/backpack_crops/pages/
+assets/catalog/backpack_crops/segments/
+assets/catalog/order_cycle/
+assets/catalog/employee_work/
+assets/catalog/normal_orders/latest_*.json
+
+# Local runtime resource rewrite (maa_frame_normalize)
+assets/resource_runtime/
+**/maa_resource_norm/
+
+# Desktop / user-dir copies must never be added
+**/Desktop/

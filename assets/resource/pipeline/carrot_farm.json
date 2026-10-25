@@ -1,0 +1,1549 @@
+{
+    "ManualPlantingOnce": {
+        "action": "Custom",
+        "custom_action": "ManualPlantingOnce",
+        "custom_action_param": { "count": 1 },
+        "attach": { "manual_field_id": "field_1", "manual_crop_item_id": 14 },
+        "timeout": 600000
+    },
+    "ManualPlantingPreflight": {
+        "action": "Custom",
+        "custom_action": "ManualPlantingPreflight",
+        "custom_action_param": { "count": 1 },
+        "attach": { "manual_field_id": "field_1", "manual_crop_item_id": 14 },
+        "timeout": 45000
+    },
+    "OpenDecodedDashboard": {
+        "action": "Custom",
+        "custom_action": "OpenDecodedDashboard",
+        "timeout": 15000
+    },
+    "RuntimePreflight": {
+        "action": "Custom",
+        "custom_action": "RuntimePreflight"
+    },
+    "CloseOfflineIncome": {
+        "action": "Custom",
+        "custom_action": "CloseOfflineIncome",
+        "timeout": 90000
+    },
+    "EnterRestaurantBackground": {
+        "action": "Custom",
+        "custom_action": "EnterRestaurant",
+        "timeout": 90000
+    },
+    "EnterFarmBackground": {
+        "action": "Custom",
+        "custom_action": "EnterFarm",
+        "timeout": 90000
+    },
+    "OpenPhoneBackground": {
+        "action": "Custom",
+        "custom_action": "OpenPhone",
+        "timeout": 90000
+    },
+    "ClickPhoneIcon": {
+        "recognition": "TemplateMatch",
+        "template": "production/phone_icon.png",
+        "roi": [
+            610,
+            1210,
+            105,
+            140
+        ],
+        "threshold": 0.68,
+        "method": 5,
+        "order_by": "Score",
+        "action": "Click",
+        "target": [
+            663,
+            1285
+        ],
+        "post_delay": 700
+    },
+    "VerifyPhoneMenuOpen": {
+        "recognition": "TemplateMatch",
+        "template": [
+            "production/employee_config.png",
+            "production/employee_staff.png"
+        ],
+        "roi": [
+            40,
+            380,
+            460,
+            280
+        ],
+        "threshold": [
+            0.74,
+            0.74
+        ],
+        "method": 5,
+        "order_by": "Score",
+        "action": "DoNothing"
+    },
+    "OpenEmployeeConfigBackground": {
+        "action": "Custom",
+        "custom_action": "OpenEmployeeConfig",
+        "timeout": 90000
+    },
+    "ClickEmployeeConfig": {
+        "recognition": "TemplateMatch",
+        "template": "production/employee_config.png",
+        "roi": [
+            250,
+            380,
+            240,
+            280
+        ],
+        "threshold": 0.74,
+        "method": 5,
+        "order_by": "Score",
+        "action": "Click",
+        "post_delay": 1000
+    },
+    "VerifyEmployeeConfigOpen": {
+        "recognition": "TemplateMatch",
+        "template": [
+            "production/farm_hat_selected.png",
+            "production/farm_hat_unselected.png"
+        ],
+        "roi": [
+            380,
+            1100,
+            330,
+            258
+        ],
+        "threshold": [
+            0.85,
+            0.85
+        ],
+        "method": 5,
+        "order_by": "Score",
+        "action": "DoNothing"
+    },
+    "SelectFarmEmploymentBackground": {
+        "action": "Custom",
+        "custom_action": "SelectFarmEmployment",
+        "timeout": 90000
+    },
+    "VerifyFarmEmploymentSelected": {
+        "recognition": "TemplateMatch",
+        "template": "production/farm_hat_selected.png",
+        "roi": [
+            380,
+            1100,
+            330,
+            258
+        ],
+        "threshold": 0.85,
+        "method": 5,
+        "order_by": "Score",
+        "action": "DoNothing"
+    },
+    "ClickFarmEmploymentTab": {
+        "recognition": "TemplateMatch",
+        "template": "production/farm_hat_unselected.png",
+        "roi": [
+            380,
+            1100,
+            330,
+            258
+        ],
+        "threshold": 0.85,
+        "method": 5,
+        "order_by": "Score",
+        "action": "Click",
+        "post_delay": 700
+    },
+    "OpenFieldDetailBackground": {
+        "action": "Custom",
+        "custom_action": "OpenFieldDetail",
+        "timeout": 90000
+    },
+    "ReturnEmployeeListBackground": {
+        "action": "Custom",
+        "custom_action": "ReturnEmployeeList",
+        "timeout": 90000
+    },
+    "LocateField2Background": {
+        "action": "Custom",
+        "custom_action": "LocateField2",
+        "timeout": 90000
+    },
+    "OpenWorkPlanBackground": {
+        "action": "Custom",
+        "custom_action": "OpenWorkPlan",
+        "timeout": 90000
+    },
+    "CloseWorkPlanBackground": {
+        "action": "Custom",
+        "custom_action": "CloseWorkPlan",
+        "timeout": 90000
+    },
+    "VerifyField2WorkPlanBackground": {
+        "action": "Custom",
+        "custom_action": "VerifySlotWorkPlan",
+        "custom_action_param": {
+            "slot_id": "field_2"
+        },
+        "timeout": 90000
+    },
+    "VerifyField3WorkPlanBackground": {
+        "action": "Custom",
+        "custom_action": "VerifySlotWorkPlan",
+        "custom_action_param": {
+            "slot_id": "field_3"
+        },
+        "timeout": 90000
+    },
+    "VerifyRanch1WorkPlanBackground": {
+        "action": "Custom",
+        "custom_action": "VerifySlotWorkPlan",
+        "custom_action_param": {
+            "slot_id": "ranch_1"
+        },
+        "timeout": 90000
+    },
+    "VerifyRanch2WorkPlanBackground": {
+        "action": "Custom",
+        "custom_action": "VerifySlotWorkPlan",
+        "custom_action_param": {
+            "slot_id": "ranch_2"
+        },
+        "timeout": 90000
+    },
+    "VerifyOrchard1WorkPlanBackground": {
+        "action": "Custom",
+        "custom_action": "VerifySlotWorkPlan",
+        "custom_action_param": {
+            "slot_id": "orchard_1"
+        },
+        "timeout": 90000
+    },
+    "VerifyOrchard2WorkPlanBackground": {
+        "action": "Custom",
+        "custom_action": "VerifySlotWorkPlan",
+        "custom_action_param": {
+            "slot_id": "orchard_2"
+        },
+        "timeout": 90000
+    },
+    "RunShortCycle": {
+        "action": "Custom",
+        "custom_action": "RunShortCycle",
+        "custom_action_param": {
+            "rounds": 1,
+            "poll_seconds": 20,
+            "timeout_seconds": 900
+        },
+        "attach": {
+            "ui_apply": false
+        },
+        "timeout": 86400000,
+        "focus": {
+            "Node.Action.Starting": {
+                "content": "启动单订单短循环；默认仅预览，正式执行需在选项中切换并确认清地。",
+                "display": [
+                    "log",
+                    "toast"
+                ]
+            },
+            "Node.Action.Failed": {
+                "content": "周期未完成或已取消，请检查工作进程日志。不要直接重排已有员工计划。",
+                "display": [
+                    "log",
+                    "toast"
+                ]
+            }
+        }
+    },
+    "ConfirmProductionCycleStart": {
+        "action": "Custom",
+        "custom_action": "ConfirmProductionCycleStart"
+    },
+    "Win32ConnectionTest": {
+        "action": "Screencap",
+        "filename": "carrot_farm_win32_connection",
+        "format": "png"
+    },
+    "RecognizeClockStart": {
+        "rate_limit": 500,
+        "timeout": 5000,
+        "next": [
+            "RecognizeTopRightClock"
+        ]
+    },
+    "RecognizeTopRightClock": {
+        "recognition": "OCR",
+        "roi": [
+            580,
+            200,
+            120,
+            55
+        ],
+        "expected": "^([01]\\d|2[0-3]):[0-5]\\d$",
+        "threshold": 0.2,
+        "only_rec": true,
+        "replace": [
+            [
+                "：",
+                ":"
+            ],
+            [
+                ";",
+                ":"
+            ]
+        ],
+        "focus": {
+            "Node.Recognition.Succeeded": {
+                "content": "右上角时间 OCR 命中；识别文字见 Maa 日志中的 best_result.text。",
+                "display": [
+                    "log",
+                    "toast"
+                ]
+            }
+        }
+    },
+    "MaximizeViewStart": {
+        "rate_limit": 500,
+        "timeout": 5000,
+        "next": [
+            "ScrollDownToMaxView"
+        ]
+    },
+    "RecognizeBackpackStart": {
+        "rate_limit": 500,
+        "timeout": 5000,
+        "next": [
+            "VerifyBackpackOpened",
+            "RecognizeBackpackIcon"
+        ]
+    },
+    "RecognizeBackpackIcon": {
+        "recognition": "TemplateMatch",
+        "template": "navigation/backpack.png",
+        "roi": [
+            560,
+            1080,
+            160,
+            180
+        ],
+        "threshold": 0.78,
+        "method": 5,
+        "order_by": "Score",
+        "action": "Click",
+        "target": [
+            657,
+            1181
+        ],
+        "post_delay": 800,
+        "next": [
+            "VerifyBackpackOpened"
+        ],
+        "focus": {
+            "Node.Recognition.Succeeded": {
+                "content": "已识别到背包图标。",
+                "display": [
+                    "log",
+                    "toast"
+                ]
+            },
+            "Node.Recognition.Failed": {
+                "content": "未识别到背包图标。",
+                "display": [
+                    "log"
+                ]
+            }
+        }
+    },
+    "VerifyBackpackOpened": {
+        "recognition": "TemplateMatch",
+        "template": "navigation/backpack_open.png",
+        "roi": [
+            230,
+            230,
+            260,
+            190
+        ],
+        "threshold": 0.8,
+        "method": 5,
+        "order_by": "Score",
+        "action": "DoNothing",
+        "timeout": 5000,
+        "focus": {
+            "Node.Recognition.Succeeded": {
+                "content": "背包已成功打开。",
+                "display": [
+                    "log",
+                    "toast"
+                ]
+            },
+            "Node.Recognition.Failed": {
+                "content": "点击后未检测到背包内部界面。",
+                "display": [
+                    "log"
+                ]
+            }
+        }
+    },
+    "BackpackQuantityOCR": {
+        "recognition": "OCR",
+        "expected": "^\\d+$",
+        "threshold": 0.1,
+        "only_rec": true,
+        "replace": [
+            [
+                "O",
+                "0"
+            ],
+            [
+                "o",
+                "0"
+            ],
+            [
+                "l",
+                "1"
+            ],
+            [
+                "I",
+                "1"
+            ],
+            [
+                "i",
+                "1"
+            ]
+        ]
+    },
+    "EnterRestaurantStart": {
+        "next": [
+            "VerifyFarmEntryVisible",
+            "ClickRestaurantEntry"
+        ]
+    },
+    "ClickRestaurantEntry": {
+        "recognition": "TemplateMatch",
+        "template": [
+            "navigation/restaurant_entry.png",
+            "navigation/restaurant_entry_lid.png"
+        ],
+        "roi": [
+            0,
+            1160,
+            140,
+            193
+        ],
+        "threshold": [
+            0.72,
+            0.9
+        ],
+        "method": 5,
+        "order_by": "Score",
+        "action": "Click",
+        "target": [
+            58,
+            1270
+        ],
+        "post_delay": 1000,
+        "next": [
+            "VerifyFarmEntryVisible"
+        ]
+    },
+    "VerifyFarmEntryVisible": {
+        "recognition": "TemplateMatch",
+        "template": [
+            "navigation/farm_entry.png",
+            "navigation/farm_entry_sprout.png",
+            "navigation/farm_entry_sprout_day.png",
+            "navigation/farm_entry_sprout_night.png"
+        ],
+        "roi": [
+            0,
+            1150,
+            150,
+            203
+        ],
+        "threshold": [
+            0.72,
+            0.9,
+            0.9,
+            0.9
+        ],
+        "method": 5,
+        "order_by": "Score",
+        "action": "DoNothing",
+        "rate_limit": 120,
+        "timeout": 10000,
+        "focus": {
+            "Node.Recognition.Succeeded": {
+                "content": "餐厅入口已切换为农场标识，进入餐厅成功。",
+                "display": [
+                    "log",
+                    "toast"
+                ]
+            }
+        }
+    },
+    "EnterFarmStart": {
+        "next": [
+            "VerifyRestaurantEntryVisible",
+            "ClickFarmEntry",
+            "ClickFarmEntryAlert"
+        ]
+    },
+    "ClickFarmEntry": {
+        "recognition": "TemplateMatch",
+        "template": [
+            "navigation/farm_entry.png",
+            "navigation/farm_entry_sprout.png",
+            "navigation/farm_entry_sprout_day.png",
+            "navigation/farm_entry_sprout_night.png"
+        ],
+        "roi": [
+            0,
+            1150,
+            150,
+            203
+        ],
+        "threshold": [
+            0.72,
+            0.9,
+            0.9,
+            0.9
+        ],
+        "method": 5,
+        "order_by": "Score",
+        "action": "Click",
+        "target": [
+            58,
+            1270
+        ],
+        "post_delay": 1000,
+        "next": [
+            "VerifyRestaurantEntryVisible"
+        ]
+    },
+    "ClickFarmEntryAlert": {
+        "recognition": "TemplateMatch",
+        "template": [
+            "navigation/farm_entry_alert.png",
+            "navigation/farm_entry_sprout_reminder.png"
+        ],
+        "roi": [
+            0,
+            1150,
+            150,
+            203
+        ],
+        "threshold": [0.72, 0.9],
+        "method": 5,
+        "order_by": "Score",
+        "action": "Click",
+        "post_delay": 1000,
+        "next": [
+            "VerifyRestaurantEntryVisible"
+        ]
+    },
+    "VerifyRestaurantEntryVisible": {
+        "recognition": "TemplateMatch",
+        "template": [
+            "navigation/restaurant_entry.png",
+            "navigation/restaurant_entry_lid.png"
+        ],
+        "roi": [
+            0,
+            1160,
+            140,
+            193
+        ],
+        "threshold": [
+            0.72,
+            0.9
+        ],
+        "method": 5,
+        "order_by": "Score",
+        "action": "DoNothing",
+        "rate_limit": 120,
+        "timeout": 10000,
+        "focus": {
+            "Node.Recognition.Succeeded": {
+                "content": "农场标识已切换为锅盖，进入农场成功。",
+                "display": [
+                    "log",
+                    "toast"
+                ]
+            }
+        }
+    },
+    "OpenNoticeBoardStart": {
+        "next": [
+            "VerifyNoticeBoardOpened",
+            "ClickNoticeBoard"
+        ]
+    },
+    "ClickNoticeBoard": {
+        "recognition": "TemplateMatch",
+        "template": "navigation/notice_board.png",
+        "roi": [
+            180,
+            570,
+            520,
+            660
+        ],
+        "threshold": 0.75,
+        "method": 5,
+        "order_by": "Score",
+        "action": "Click",
+        "post_delay": 300,
+        "next": [
+            "VerifyNoticeBoardOpened"
+        ],
+        "focus": {
+            "Node.Recognition.Succeeded": {
+                "content": "已识别到餐厅告示牌。",
+                "display": [
+                    "log",
+                    "toast"
+                ]
+            }
+        }
+    },
+    "VerifyNoticeBoardOpened": {
+        "recognition": "TemplateMatch",
+        "template": "navigation/notice_board_open.png",
+        "roi": [
+            40,
+            180,
+            640,
+            220
+        ],
+        "threshold": 0.75,
+        "method": 5,
+        "order_by": "Score",
+        "action": "DoNothing",
+        "rate_limit": 100,
+        "timeout": 1000,
+        "focus": {
+            "Node.Recognition.Succeeded": {
+                "content": "告示牌订单界面已成功打开。",
+                "display": [
+                    "log",
+                    "toast"
+                ]
+            },
+            "Node.Recognition.Failed": {
+                "content": "点击后未检测到告示牌订单界面。",
+                "display": [
+                    "log"
+                ]
+            }
+        }
+    },
+    "ClosePopupStart": {
+        "recognition": "TemplateMatch",
+        "template": "navigation/popup_close.png",
+        "roi": [
+            0,
+            1190,
+            130,
+            150
+        ],
+        "threshold": 0.78,
+        "method": 5,
+        "order_by": "Score",
+        "action": "Click",
+        "post_delay": 300,
+        "focus": {
+            "Node.Recognition.Succeeded": {
+                "content": "已识别并关闭当前弹窗。",
+                "display": [
+                    "log",
+                    "toast"
+                ]
+            },
+            "Node.Recognition.Failed": {
+                "content": "当前界面未检测到通用关闭按钮。",
+                "display": [
+                    "log"
+                ]
+            }
+        }
+    },
+    "ReturnToFarmAfterOrdersStart": {
+        "recognition": "TemplateMatch",
+        "template": "navigation/popup_close.png",
+        "roi": [
+            0,
+            1190,
+            130,
+            150
+        ],
+        "threshold": 0.78,
+        "method": 5,
+        "order_by": "Score",
+        "action": "Click",
+        "post_delay": 600,
+        "next": [
+            "EnterFarmStart"
+        ],
+        "focus": {
+            "Node.Recognition.Succeeded": {
+                "content": "无可接受订单，已关闭订单页并准备返回农场。",
+                "display": [
+                    "log",
+                    "toast"
+                ]
+            }
+        }
+    },
+    "OpenNormalOrdersStart": {
+        "next": [
+            "VerifyNormalOrdersReady",
+            "ClickNormalOrderTab",
+            "NormalOrdersClickNoticeBoard",
+            "NormalOrdersClickEmptyNoticeBoard",
+            "NormalOrdersClickRestaurantEntry"
+        ]
+    },
+    "VerifyNormalOrdersReady": {
+        "recognition": "TemplateMatch",
+        "template": "navigation/normal_order_active.png",
+        "roi": [
+            420,
+            195,
+            250,
+            120
+        ],
+        "threshold": 0.8,
+        "method": 5,
+        "order_by": "Score",
+        "action": "DoNothing",
+        "rate_limit": 100,
+        "timeout": 1000
+    },
+    "VerifyNormalOrdersOpened": {
+        "recognition": "TemplateMatch",
+        "template": "navigation/normal_order_active.png",
+        "roi": [
+            420,
+            195,
+            250,
+            120
+        ],
+        "threshold": 0.8,
+        "method": 5,
+        "order_by": "Score",
+        "action": "DoNothing",
+        "rate_limit": 100,
+        "timeout": 1000,
+        "next": [
+            "VerifyNormalOrderCompletionChecked"
+        ]
+    },
+    "ClickNormalOrderTab": {
+        "recognition": "TemplateMatch",
+        "template": "navigation/normal_order_tab.png",
+        "roi": [
+            440,
+            190,
+            260,
+            130
+        ],
+        "threshold": 0.75,
+        "method": 5,
+        "order_by": "Score",
+        "action": "Click",
+        "post_delay": 300,
+        "rate_limit": 100,
+        "timeout": 1000,
+        "next": [
+            "WaitNormalOrdersAfterTab"
+        ]
+    },
+    "WaitNormalOrdersAfterTab": {
+        "action": "DoNothing",
+        "post_delay": 1200,
+        "next": [
+            "VerifyNormalOrdersReady"
+        ]
+    },
+    "NormalOrdersClickNoticeBoard": {
+        "recognition": "TemplateMatch",
+        "template": "navigation/notice_board.png",
+        "roi": [
+            180,
+            570,
+            520,
+            660
+        ],
+        "threshold": 0.72,
+        "method": 5,
+        "order_by": "Score",
+        "action": "Click",
+        "post_delay": 300,
+        "rate_limit": 100,
+        "timeout": 1000,
+        "next": [
+            "WaitNormalOrdersAfterBoard"
+        ]
+    },
+    "NormalOrdersClickEmptyNoticeBoard": {
+        "recognition": "TemplateMatch",
+        "template": [
+            "navigation/notice_board_empty.png",
+            "navigation/notice_board_empty_day.png"
+        ],
+        "roi": [
+            180,
+            570,
+            520,
+            660
+        ],
+        "threshold": [
+            0.8,
+            0.84
+        ],
+        "method": 5,
+        "order_by": "Score",
+        "action": "Click",
+        "post_delay": 300,
+        "rate_limit": 100,
+        "timeout": 1000,
+        "next": [
+            "WaitNormalOrdersAfterBoard"
+        ]
+    },
+    "WaitNormalOrdersAfterBoard": {
+        "action": "DoNothing",
+        "post_delay": 1200,
+        "next": [
+            "VerifyNormalOrdersReady",
+            "NormalOrdersWaitForTab"
+        ]
+    },
+    "NormalOrdersWaitForTab": {
+        "recognition": "TemplateMatch",
+        "template": "navigation/normal_order_tab.png",
+        "roi": [
+            440,
+            190,
+            260,
+            130
+        ],
+        "threshold": 0.75,
+        "method": 5,
+        "order_by": "Score",
+        "action": "Click",
+        "post_delay": 300,
+        "rate_limit": 120,
+        "timeout": 10000,
+        "next": [
+            "WaitNormalOrdersAfterTab"
+        ]
+    },
+    "NormalOrdersClickRestaurantEntry": {
+        "recognition": "TemplateMatch",
+        "template": [
+            "navigation/restaurant_entry.png",
+            "navigation/restaurant_entry_lid.png"
+        ],
+        "roi": [
+            0,
+            1160,
+            140,
+            193
+        ],
+        "threshold": [
+            0.72,
+            0.9
+        ],
+        "method": 5,
+        "order_by": "Score",
+        "action": "Click",
+        "rate_limit": 100,
+        "timeout": 1000,
+        "target": [
+            58,
+            1270
+        ],
+        "post_delay": 300,
+        "next": [
+            "WaitNormalOrdersAfterRestaurant"
+        ]
+    },
+    "WaitNormalOrdersAfterRestaurant": {
+        "action": "DoNothing",
+        "post_delay": 1600,
+        "next": [
+            "NormalOrdersVerifyRestaurantLoaded"
+        ]
+    },
+    "NormalOrdersVerifyRestaurantLoaded": {
+        "recognition": "TemplateMatch",
+        "template": [
+            "navigation/farm_entry.png",
+            "navigation/farm_entry_sprout.png",
+            "navigation/farm_entry_sprout_day.png"
+        ],
+        "roi": [
+            0,
+            1150,
+            150,
+            203
+        ],
+        "threshold": [
+            0.72,
+            0.9,
+            0.9
+        ],
+        "method": 5,
+        "order_by": "Score",
+        "action": "DoNothing",
+        "rate_limit": 120,
+        "timeout": 10000,
+        "next": [
+            "NormalOrdersClickNoticeBoard",
+            "NormalOrdersClickEmptyNoticeBoard"
+        ]
+    },
+    "VerifyNormalOrderCompletionChecked": {
+        "recognition": "TemplateMatch",
+        "template": [
+            "navigation/normal_order_completion_checked_full.png",
+            "navigation/normal_order_completion_checked_full_live.png"
+        ],
+        "roi": [
+            475,
+            1170,
+            195,
+            90
+        ],
+        "threshold": 0.98,
+        "method": 5,
+        "order_by": "Score",
+        "action": "DoNothing",
+        "focus": {
+            "Node.Recognition.Succeeded": {
+                "content": "普通订单完成3次，白色提示框已打勾。",
+                "display": [
+                    "log",
+                    "toast"
+                ]
+            },
+            "Node.Recognition.Failed": {
+                "content": "普通订单的完成3次提示框尚未打勾。",
+                "display": [
+                    "log"
+                ]
+            }
+        }
+    },
+    "EnableNormalOrderTripleStart": {
+        "next": [
+            "VerifyNormalOrderCompletionChecked",
+            "ClickNormalOrderCompletionUnchecked"
+        ]
+    },
+    "ClickNormalOrderCompletionUnchecked": {
+        "recognition": "TemplateMatch",
+        "template": [
+            "navigation/normal_order_completion_unchecked.png",
+            "navigation/normal_order_completion_unchecked_live.png"
+        ],
+        "roi": [
+            475,
+            1170,
+            195,
+            90
+        ],
+        "threshold": 0.84,
+        "method": 5,
+        "order_by": "Score",
+        "action": "Click",
+        "post_delay": 600,
+        "rate_limit": 100,
+        "timeout": 1500,
+        "next": [
+            "VerifyNormalOrderCompletionChecked"
+        ],
+        "focus": {
+            "Node.Recognition.Succeeded": {
+                "content": "已选择完成3次，订单需求数量已切换为三倍。",
+                "display": [
+                    "log",
+                    "toast"
+                ]
+            }
+        }
+    },
+    "RecoverNormalOrderStart": {
+        "next": [
+            "ClickNormalOrderReplace",
+            "ClickNormalOrderFreeAccelerate"
+        ]
+    },
+    "ClickNormalOrderReplace": {
+        "recognition": "TemplateMatch",
+        "template": "navigation/normal_order_replace.png",
+        "roi": [
+            40,
+            1040,
+            460,
+            210
+        ],
+        "threshold": 0.78,
+        "method": 5,
+        "order_by": "Score",
+        "action": "Click",
+        "post_delay": 500,
+        "rate_limit": 100,
+        "timeout": 1000,
+        "focus": {
+            "Node.Recognition.Succeeded": {
+                "content": "当前订单无法完成，已点击更换订单。",
+                "display": [
+                    "log",
+                    "toast"
+                ]
+            }
+        }
+    },
+    "ClickNormalOrderFreeAccelerate": {
+        "recognition": "TemplateMatch",
+        "template": "navigation/normal_order_free_accelerate.png",
+        "roi": [
+            150,
+            1030,
+            430,
+            230
+        ],
+        "threshold": 0.78,
+        "method": 5,
+        "order_by": "Score",
+        "action": "Click",
+        "post_delay": 700,
+        "rate_limit": 100,
+        "timeout": 1000,
+        "focus": {
+            "Node.Recognition.Succeeded": {
+                "content": "已点击免费加速，等待新订单信息。",
+                "display": [
+                    "log",
+                    "toast"
+                ]
+            }
+        }
+    },
+    "AcceptNormalOrderStart": {
+        "recognition": "TemplateMatch",
+        "template": "navigation/normal_order_accept.png",
+        "roi": [
+            430,
+            1030,
+            270,
+            200
+        ],
+        "threshold": 0.9,
+        "method": 5,
+        "order_by": "Score",
+        "action": "Click",
+        "post_delay": 700,
+        "rate_limit": 100,
+        "timeout": 1500,
+        "focus": {
+            "Node.Recognition.Succeeded": {
+                "content": "足数订单已点击接受。",
+                "display": [
+                    "log",
+                    "toast"
+                ]
+            }
+        }
+    },
+    "ConfirmSleepPromptStart": {
+        "recognition": "TemplateMatch",
+        "template": "navigation/sleep_prompt_title.png",
+        "roi": [
+            240,
+            380,
+            240,
+            140
+        ],
+        "threshold": 0.85,
+        "method": 5,
+        "order_by": "Score",
+        "action": "DoNothing",
+        "rate_limit": 100,
+        "timeout": 1000,
+        "next": [
+            "ClickSleepPromptConfirm"
+        ]
+    },
+    "ClickSleepPromptConfirm": {
+        "recognition": "TemplateMatch",
+        "template": "navigation/sleep_prompt_confirm.png",
+        "roi": [
+            350,
+            590,
+            330,
+            220
+        ],
+        "threshold": 0.85,
+        "method": 5,
+        "order_by": "Score",
+        "action": "Click",
+        "post_delay": 500,
+        "focus": {
+            "Node.Recognition.Succeeded": {
+                "content": "餐厅已打烊，已确认睡觉提示。",
+                "display": [
+                    "log",
+                    "toast"
+                ]
+            }
+        }
+    },
+    "VerifyNormalOrderInProgress": {
+        "recognition": "TemplateMatch",
+        "template": "navigation/normal_order_in_progress.png",
+        "roi": [
+            150,
+            750,
+            450,
+            330
+        ],
+        "threshold": 0.78,
+        "method": 5,
+        "order_by": "Score",
+        "action": "DoNothing",
+        "rate_limit": 100,
+        "timeout": 3000,
+        "focus": {
+            "Node.Recognition.Succeeded": {
+                "content": "订单正在进行中，本轮停止提交并等待1分钟。",
+                "display": [
+                    "log",
+                    "toast"
+                ]
+            }
+        }
+    },
+    "ScrollDownToMaxView": {
+        "action": "Scroll",
+        "target": [
+            330,
+            650,
+            60,
+            60
+        ],
+        "dx": 0,
+        "dy": -1200,
+        "post_delay": 1000,
+        "focus": {
+            "Node.Action.Succeeded": {
+                "content": "已向下滚动，将游戏视野缩放到最大。",
+                "display": [
+                    "log",
+                    "toast"
+                ]
+            }
+        }
+    },
+    "RunShortCycleApply": {
+        "action": "Custom",
+        "custom_action": "RunShortCycle",
+        "custom_action_param": {
+            "rounds": 1,
+            "poll_seconds": 20,
+            "timeout_seconds": 900
+        },
+        "attach": {
+            "ui_apply": true
+        },
+        "timeout": 86400000,
+        "focus": {
+            "Node.Action.Starting": {
+                "content": "正式短循环：将确认清地后补产、监控领取并交单。游戏勿最小化。",
+                "display": [
+                    "log",
+                    "toast"
+                ]
+            },
+            "Node.Action.Failed": {
+                "content": "正式短循环未完成或已取消。已保存的员工计划不会自动清空，请勿盲目重跑。 请查看日志中的错误原因。",
+                "display": [
+                    "log",
+                    "toast"
+                ]
+            }
+        }
+    },
+    "RunShortCyclePreview": {
+        "action": "Custom",
+        "custom_action": "RunShortCycle",
+        "custom_action_param": {
+            "rounds": 1,
+            "poll_seconds": 20,
+            "timeout_seconds": 900
+        },
+        "attach": {
+            "ui_apply": false
+        },
+        "timeout": 86400000,
+        "focus": {
+            "Node.Action.Starting": {
+                "content": "预览短循环：只扫描订单与排产计划，不改游戏、不弹清地确认。",
+                "display": [
+                    "log",
+                    "toast"
+                ]
+            },
+            "Node.Action.Failed": {
+                "content": "预览未完成或已取消。未对游戏做任何修改。 请查看日志中的错误原因。",
+                "display": [
+                    "log",
+                    "toast"
+                ]
+            }
+        }
+    },
+    "RunDailyPartyOrders": {
+        "action": "Custom",
+        "custom_action": "RunDailyOrders",
+        "custom_action_param": {
+            "order_type": "party",
+            "poll_seconds": 20,
+            "timeout_seconds": 900
+        },
+        "attach": {
+            "ui_apply": true,
+            "first_order_allow_crop_001": false,
+            "first_order_allow_crop_002": false,
+            "first_order_allow_crop_003": false,
+            "first_order_allow_crop_004": false,
+            "first_order_allow_crop_005": false,
+            "first_order_allow_crop_006": false,
+            "first_order_allow_crop_007": false,
+            "first_order_allow_crop_008": false,
+            "first_order_allow_crop_009": false,
+            "first_order_allow_crop_010": false,
+            "first_order_allow_crop_011": false,
+            "first_order_allow_crop_012": false,
+            "first_order_allow_crop_013": false,
+            "first_order_allow_crop_014": false,
+            "first_order_allow_crop_015": false,
+            "first_order_allow_crop_016": false,
+            "first_order_allow_crop_017": false,
+            "first_order_allow_crop_018": false,
+            "first_order_allow_crop_019": false,
+            "first_order_allow_crop_020": false,
+            "first_order_allow_crop_021": false,
+            "first_order_allow_crop_022": false,
+            "first_order_allow_crop_023": false,
+            "first_order_allow_crop_024": false
+        },
+        "timeout": 86400000,
+        "focus": {
+            "Node.Action.Starting": {
+                "content": "开始聚会订单日常：切「聚会订单」页签 → 扫客人需求 → 缺口排产领取 → 勾「完成6次」接受。日志打印[订单]/[员工安排]/[交单]。监控预览在左上角。",
+                "display": [
+                    "log",
+                    "toast"
+                ]
+            },
+            "Node.Action.Succeeded": {
+                "content": "聚会订单日常结束。查看日志里的完成次数 / next_available。",
+                "display": [
+                    "log"
+                ]
+            },
+            "Node.Action.Failed": {
+                "content": "聚会订单日常失败。请看日志中的[错误]/[跳过]/[冷却]；已保存计划不会自动清空。",
+                "display": [
+                    "log",
+                    "toast"
+                ]
+            }
+        }
+    },
+    "RunDailyTakeoutOrders": {
+        "action": "Custom",
+        "custom_action": "RunDailyOrders",
+        "custom_action_param": {
+            "order_type": "takeout",
+            "poll_seconds": 20,
+            "timeout_seconds": 900
+        },
+        "attach": {
+            "ui_apply": true,
+            "first_order_allow_crop_001": false,
+            "first_order_allow_crop_002": false,
+            "first_order_allow_crop_003": false,
+            "first_order_allow_crop_004": false,
+            "first_order_allow_crop_005": false,
+            "first_order_allow_crop_006": false,
+            "first_order_allow_crop_007": false,
+            "first_order_allow_crop_008": false,
+            "first_order_allow_crop_009": false,
+            "first_order_allow_crop_010": false,
+            "first_order_allow_crop_011": false,
+            "first_order_allow_crop_012": false,
+            "first_order_allow_crop_013": false,
+            "first_order_allow_crop_014": false,
+            "first_order_allow_crop_015": false,
+            "first_order_allow_crop_016": false,
+            "first_order_allow_crop_017": false,
+            "first_order_allow_crop_018": false,
+            "first_order_allow_crop_019": false,
+            "first_order_allow_crop_020": false,
+            "first_order_allow_crop_021": false,
+            "first_order_allow_crop_022": false,
+            "first_order_allow_crop_023": false,
+            "first_order_allow_crop_024": false
+        },
+        "timeout": 86400000,
+        "focus": {
+            "Node.Action.Starting": {
+                "content": "开始外卖订单日常：切「外卖订单」页签 → 扫客人需求 → 缺口排产领取 → 勾「完成6次」接受。日志打印[订单]/[员工安排]/[交单]。监控预览在左上角。",
+                "display": [
+                    "log",
+                    "toast"
+                ]
+            },
+            "Node.Action.Succeeded": {
+                "content": "外卖订单日常结束。查看日志里的完成次数 / next_available。",
+                "display": [
+                    "log"
+                ]
+            },
+            "Node.Action.Failed": {
+                "content": "外卖订单日常失败。请看日志中的[错误]/[跳过]/[冷却]；已保存计划不会自动清空。",
+                "display": [
+                    "log",
+                    "toast"
+                ]
+            }
+        }
+    },
+    "RunDailyNormalOrders": {
+        "action": "Custom",
+        "custom_action": "RunDailyOrders",
+        "custom_action_param": {
+            "order_type": "normal",
+            "poll_seconds": 20,
+            "timeout_seconds": 900
+        },
+        "attach": {
+            "ui_apply": true,
+            "first_order_allow_crop_001": false,
+            "first_order_allow_crop_002": false,
+            "first_order_allow_crop_003": false,
+            "first_order_allow_crop_004": false,
+            "first_order_allow_crop_005": false,
+            "first_order_allow_crop_006": false,
+            "first_order_allow_crop_007": false,
+            "first_order_allow_crop_008": false,
+            "first_order_allow_crop_009": false,
+            "first_order_allow_crop_010": false,
+            "first_order_allow_crop_011": false,
+            "first_order_allow_crop_012": false,
+            "first_order_allow_crop_013": false,
+            "first_order_allow_crop_014": false,
+            "first_order_allow_crop_015": false,
+            "first_order_allow_crop_016": false,
+            "first_order_allow_crop_017": false,
+            "first_order_allow_crop_018": false,
+            "first_order_allow_crop_019": false,
+            "first_order_allow_crop_020": false,
+            "first_order_allow_crop_021": false,
+            "first_order_allow_crop_022": false,
+            "first_order_allow_crop_023": false,
+            "first_order_allow_crop_024": false
+        },
+        "timeout": 86400000,
+        "focus": {
+            "Node.Action.Starting": {
+                "content": "开始普通订单日常。日志将打印订单信息与员工安排；监控预览：左上角。",
+                "display": [
+                    "log",
+                    "toast"
+                ]
+            },
+            "Node.Action.Succeeded": {
+                "content": "普通订单日常任务结束。详见日志（含跳过原因/next_available）。",
+                "display": [
+                    "log"
+                ]
+            },
+            "Node.Action.Failed": {
+                "content": "普通订单日常失败或已取消。请看日志中的[错误]/[跳过]行；已保存计划不会自动清空。",
+                "display": [
+                    "log",
+                    "toast"
+                ]
+            }
+        }
+    },
+    "ClickPartyOrderTab": {
+        "recognition": "TemplateMatch",
+        "template": "navigation/party_order_tab.png",
+        "roi": [
+            40,
+            190,
+            240,
+            130
+        ],
+        "threshold": 0.78,
+        "method": 5,
+        "order_by": "Score",
+        "action": "Click",
+        "post_delay": 300,
+        "rate_limit": 100,
+        "timeout": 1000,
+        "next": [
+            "WaitPartyOrdersAfterTab"
+        ]
+    },
+    "ClickTakeoutOrderTab": {
+        "recognition": "TemplateMatch",
+        "template": "navigation/takeout_order_tab.png",
+        "roi": [
+            220,
+            190,
+            260,
+            130
+        ],
+        "threshold": 0.78,
+        "method": 5,
+        "order_by": "Score",
+        "action": "Click",
+        "post_delay": 300,
+        "rate_limit": 100,
+        "timeout": 1000,
+        "next": [
+            "WaitTakeoutOrdersAfterTab"
+        ]
+    },
+    "VerifyPartyOrdersReady": {
+        "recognition": "TemplateMatch",
+        "template": "navigation/party_order_active.png",
+        "roi": [
+            40,
+            195,
+            260,
+            120
+        ],
+        "threshold": 0.82,
+        "method": 5,
+        "order_by": "Score",
+        "action": "DoNothing",
+        "rate_limit": 100,
+        "timeout": 1000
+    },
+    "VerifyTakeoutOrdersReady": {
+        "recognition": "TemplateMatch",
+        "template": "navigation/takeout_order_active.png",
+        "roi": [
+            220,
+            195,
+            280,
+            120
+        ],
+        "threshold": 0.82,
+        "method": 5,
+        "order_by": "Score",
+        "action": "DoNothing",
+        "rate_limit": 100,
+        "timeout": 1000
+    },
+    "WaitPartyOrdersAfterTab": {
+        "action": "DoNothing",
+        "post_delay": 1200,
+        "next": [
+            "VerifyPartyOrdersReady"
+        ]
+    },
+    "WaitTakeoutOrdersAfterTab": {
+        "action": "DoNothing",
+        "post_delay": 1200,
+        "next": [
+            "VerifyTakeoutOrdersReady"
+        ]
+    },
+    "RunDailyBatchOrders": {
+        "action": "Custom",
+        "custom_action": "RunDailyOrders",
+        "custom_action_param": {
+            "order_type": "batch",
+            "poll_seconds": 20,
+            "timeout_seconds": 900
+        },
+        "attach": {
+            "ui_apply": true,
+            "first_order_allow_crop_001": false,
+            "first_order_allow_crop_002": false,
+            "first_order_allow_crop_003": false,
+            "first_order_allow_crop_004": false,
+            "first_order_allow_crop_005": false,
+            "first_order_allow_crop_006": false,
+            "first_order_allow_crop_007": false,
+            "first_order_allow_crop_008": false,
+            "first_order_allow_crop_009": false,
+            "first_order_allow_crop_010": false,
+            "first_order_allow_crop_011": false,
+            "first_order_allow_crop_012": false,
+            "first_order_allow_crop_013": false,
+            "first_order_allow_crop_014": false,
+            "first_order_allow_crop_015": false,
+            "first_order_allow_crop_016": false,
+            "first_order_allow_crop_017": false,
+            "first_order_allow_crop_018": false,
+            "first_order_allow_crop_019": false,
+            "first_order_allow_crop_020": false,
+            "first_order_allow_crop_021": false,
+            "first_order_allow_crop_022": false,
+            "first_order_allow_crop_023": false,
+            "first_order_allow_crop_024": false
+        },
+        "timeout": 86400000,
+        "focus": {
+            "Node.Action.Starting": {
+                "content": "开始聚会与外卖自动调度：切换对应页签，先做可用订单，两类都冷却时才等待。",
+                "display": [
+                    "log",
+                    "toast"
+                ]
+            },
+            "Node.Action.Succeeded": {
+                "content": "聚会与外卖调度结束，实际完成情况见日志。",
+                "display": [
+                    "log"
+                ]
+            },
+            "Node.Action.Failed": {
+                "content": "订单调度失败或取消，请查看工作进程完整日志。",
+                "display": [
+                    "log",
+                    "toast"
+                ]
+            }
+        }
+    },
+    "RefreshOrder": {
+        "action": "Custom",
+        "custom_action": "RefreshOrder",
+        "custom_action_param": {
+            "order_type": "party",
+            "order_number": 1
+        },
+        "timeout": 90000
+    },
+    "RunFeedProduction": {
+        "action": "Custom",
+        "custom_action": "RunFeedProduction",
+        "custom_action_param": {
+            "max_feed": 120,
+            "poll_seconds": 60
+        },
+        "timeout": 2147483647
+    }
+}
