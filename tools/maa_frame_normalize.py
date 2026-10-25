@@ -42,7 +42,7 @@ FG_STEAL_DIR = ROOT / ".tmp" / "fg_steal"
 # Last observed top letterbox on the raw controller frame. Clicks derived from
 # normalize_frame() coordinates must add this back before post_click.
 _LAST_TOP_OFFSET = 0
-# Last FramePool frame size (after normalize). Used to map screenshot XY -> client XY.
+# Raw FramePool size. to_controller_xy restores the crop before client scaling.
 _LAST_FRAME_WH: tuple[int, int] = (EXPECTED_WIDTH, EXPECTED_HEIGHT)
 
 # Win32 mouse messages (client coordinates in lParam).
@@ -119,11 +119,11 @@ def normalize_frame(frame):
         if height > EXPECTED_HEIGHT:
             start = (height - EXPECTED_HEIGHT) // 2
             out = frame[start : start + EXPECTED_HEIGHT]
-            _LAST_FRAME_WH = (int(out.shape[1]), int(out.shape[0]))
+            _LAST_FRAME_WH = (int(frame.shape[1]), height)
             return out
         raise RuntimeError(f"unexpected screenshot shape: {getattr(frame, 'shape', None)}")
     out = frame[offset : offset + EXPECTED_HEIGHT]
-    _LAST_FRAME_WH = (int(out.shape[1]), int(out.shape[0]))
+    _LAST_FRAME_WH = (int(frame.shape[1]), int(frame.shape[0]))
     return out
 
 
@@ -472,6 +472,6 @@ def measure_controller_offset(controller) -> int:
     job = controller.post_screencap().wait()
     if not job.succeeded:
         raise RuntimeError("Maa screenshot failed")
-    # normalize_frame updates _LAST_FRAME_WH for click scaling.
+    # normalize_frame preserves the raw capture size for click scaling.
     normalize_frame(job.get())
     return _LAST_TOP_OFFSET
