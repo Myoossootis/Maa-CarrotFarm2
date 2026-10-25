@@ -92,7 +92,15 @@ class BatchFailureTests(unittest.TestCase):
                 batch.run_batch(order_type='party', prepare_only=False, requested={})
             payload = json.loads((folder / 'result.json').read_text(encoding='utf-8'))
             self.assertEqual(payload['submitted'], [])
-            self.assertFalse((folder / 'latest_party_delivery.json').exists())
+            journal = folder / 'latest_party_delivery.json'
+            if confirmation_error:
+                self.assertTrue(journal.exists())
+                intent = json.loads(journal.read_text(encoding='utf-8'))
+                self.assertEqual(intent['status'], 'accept_intent')
+                self.assertFalse(intent['automatic_retry_allowed'])
+                self.assertFalse(intent['submitted'][0]['acceptance_confirmed'])
+            else:
+                self.assertFalse(journal.exists())
             reward.assert_not_called()
             return accept.call_count, confirm.call_count
 

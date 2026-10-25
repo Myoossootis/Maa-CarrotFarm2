@@ -158,12 +158,12 @@ def close_employee_menu(controller: Win32Controller) -> None:
             close_plan_dialog(controller)
             continue
         # 1a) empty-plan schedule prompt
-        if _schedule_plan_confirm_visible(frame):
+        if match(frame, 'empty_plan_prompt_text.png', (80, 490, 570, 130)) >= .80:
             _click_close_nav(controller, 230, 686)  # 取消
             time.sleep(0.5)
             continue
         # 1b) field assignment page (上阵员工 -> 农田N with 工作计划)
-        if match(frame, "field_work_plan_button.png", (450, 360, 250, 100)) >= 0.70 or _field_work_plan_button_visible(frame):
+        if match(frame, "field_work_plan_button.png", (450, 360, 250, 100)) >= 0.70:
             _click_close_nav(controller, 57, 1280)
             time.sleep(1.0)
             continue
@@ -201,12 +201,8 @@ def close_employee_menu(controller: Win32Controller) -> None:
             config_open = match(frame, "employee_config.png", (270, 430, 190, 210)) >= 0.74
             if not (plan_open or list_open or config_open):
                 return
-        # 6) unrecognized limbo: periodic blank recovery (same as open_phone)
-        if attempt % 3 == 2:
-            _click_close_nav(controller, 680, 1250)
-            time.sleep(0.5)
-        else:
-            time.sleep(0.3)
+        # Unknown overlays never authorize a blank recovery click on the map.
+        time.sleep(0.3)
     # dump diagnostic frame + scores before failing
     frame = screenshot(controller)
     failure_dir.mkdir(parents=True, exist_ok=True)
@@ -762,6 +758,8 @@ def collect_finished_slot(
     slot_id: str,
     tasker: Tasker | None = None,
     required_progress: int | None = None,
+    *,
+    before_click=None,
 ) -> dict:
     """Click one stable, freshly located button; decoded mode confirms receipt."""
     if tasker is None or required_progress is None or not 1 <= required_progress <= SLOTS[slot_id]["capacity"]:
@@ -832,6 +830,10 @@ def collect_finished_slot(
     else:
         center = (230, button_y)
     started = time.monotonic()
+    if before_click is not None:
+        if before is None:
+            raise RuntimeError('Durable collection intent requires decoded readback')
+        before_click(before)
     try:
         click(controller, *center)
         clearance = decoded.verify_collection(slot_id, before) if before is not None else {

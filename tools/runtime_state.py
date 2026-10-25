@@ -17,6 +17,8 @@ def write_json(path: Path, value: dict) -> None:
             temporary = Path(stream.name)
             json.dump(value, stream, ensure_ascii=False, indent=2)
             stream.write("\n")
+            stream.flush()
+            os.fsync(stream.fileno())
         os.replace(temporary, path)
     finally:
         if temporary is not None:
