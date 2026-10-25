@@ -10,15 +10,17 @@ import time
 from typing import TYPE_CHECKING
 
 try:
-    from .configure_field_employee import locate_nav, match, match_nav
+    from .configure_field_employee import locate_nav
     from .maa_frame_normalize import post_click_normalized
     from .scan_normal_orders import screenshot
     from .order_template_click import click_template_node, template_hit
+    from .enter_farm import enter_farm, farm_visible
 except ImportError:
-    from configure_field_employee import locate_nav, match, match_nav
+    from configure_field_employee import locate_nav
     from maa_frame_normalize import post_click_normalized
     from scan_normal_orders import screenshot
     from order_template_click import click_template_node, template_hit
+    from enter_farm import enter_farm, farm_visible
 
 if TYPE_CHECKING:
     from maa.controller import Win32Controller
@@ -26,10 +28,12 @@ if TYPE_CHECKING:
 
 
 def is_on_farm(frame) -> bool:
-    return (
-        match(frame, "phone_icon.png", (610, 1210, 105, 140)) >= 0.68
-        or match_nav(frame, "backpack.png", (600, 1150, 120, 120)) >= 0.70
-    )
+    return not order_board_visible(frame) and farm_visible(frame)
+
+
+def order_board_visible(frame) -> bool:
+    return any(template_hit(frame, name) is not None for name in (
+        'VerifyNormalOrdersReady', 'VerifyPartyOrdersReady', 'VerifyTakeoutOrdersReady'))
 
 
 def confirm_sleep_or_close_shop(tasker: "Tasker", controller: "Win32Controller") -> bool:
@@ -116,22 +120,15 @@ def close_order_board(controller: "Win32Controller") -> bool:
 
 
 def ensure_returned_to_farm(tasker: "Tasker", controller: "Win32Controller") -> bool:
-    """Leave the order UI and verify the farm map chrome is visible."""
+    """Close a known order board once, then verify the dedicated farm entry."""
     frame = screenshot(controller)
-    if is_on_farm(frame):
-        return True
-    if close_order_board(controller):
-        time.sleep(0.5)
-        if is_on_farm(screenshot(controller)):
-            return True
-    frame = screenshot(controller)
-    if match_nav(frame, "popup_close.png", (0, 1190, 130, 150)) >= 0.78:
-        if not post_click_normalized(controller, 57, 1280).wait().succeeded:
-            raise RuntimeError("order-page back click failed")
-        time.sleep(1.0)
+    if order_board_visible(frame):
+        if not close_order_board(controller):
+            raise RuntimeError('order board close control not recognized; stopped without input')
         frame = screenshot(controller)
-    if not is_on_farm(frame):
-        raise RuntimeError("return-to-farm verification failed")
+        if order_board_visible(frame):
+            raise RuntimeError('order board still visible; no second close click')
+    enter_farm(controller)
     return True
 
 
