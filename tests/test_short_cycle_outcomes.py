@@ -35,7 +35,7 @@ class ShortCycleOutcomeTests(unittest.TestCase):
         self.assertEqual(code, 2)
 
     def test_batch_board_wait_stops_without_production_or_quota_receipt(self):
-        for status in ('board_unavailable', 'board_loading'):
+        for status in sorted(m.BOARD_WAITING_STATES):
             with patch.object(m, 'record_completion') as record:
                 code, summary = self.run_case(dict(status=status, board_availability={'next_available': None}))
             self.assertEqual(code, 0)
