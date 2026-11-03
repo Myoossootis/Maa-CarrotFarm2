@@ -51,6 +51,19 @@ class InterfaceDailyTasksTests(unittest.TestCase):
             self.assertEqual(node["custom_action_param"]["order_type"], order_type)
             self.assertIs(node["attach"]["ui_apply"], True)
 
+    def test_prepare_stamp_skips_only_when_sources_match(self):
+        from tools import prepare_maa_ui as prep
+        with tempfile.TemporaryDirectory() as folder:
+            folder = Path(folder)
+            (folder / 'MFAAvalonia.exe').write_bytes(b'x')
+            self.assertFalse(prep.up_to_date(folder))
+            stamp = prep.source_stamp()
+            (folder / '.prepare_stamp.json').write_text(json.dumps(stamp), encoding='utf-8')
+            self.assertTrue(prep.up_to_date(folder))
+            stamp['interface']['size'] += 1
+            (folder / '.prepare_stamp.json').write_text(json.dumps(stamp), encoding='utf-8')
+            self.assertFalse(prep.up_to_date(folder))
+
     def test_prepare_allowlist_keeps_daily(self):
         src = (ROOT / "tools/prepare_maa_ui.py").read_text(encoding="utf-8")
         self.assertIn("RunDailyPartyOrders", src)
@@ -58,8 +71,8 @@ class InterfaceDailyTasksTests(unittest.TestCase):
         self.assertIn("RunDailyNormalOrders", src)
 
     def test_welcome_mentions_monitor_preview(self):
-        self.assertIn("监控预览", self.iface["welcome"])
-        self.assertIn("左上角", self.iface["welcome"])
+        self.assertIn("监控在右", self.iface["welcome"])
+        self.assertIn("操作台", self.iface["welcome"])
 
 
 class RunDailyOrdersActionTests(unittest.TestCase):

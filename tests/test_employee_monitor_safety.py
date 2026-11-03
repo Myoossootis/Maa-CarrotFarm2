@@ -7,6 +7,31 @@ from tools import configure_field_employee as config
 
 
 class MonitorSafetyTests(unittest.TestCase):
+    def test_watch_line_includes_order_gap_and_unjudged_time(self):
+        self.assertEqual(
+            m.format_order_need({'target_order': 1, 'target_items': [
+                {'name': '玫瑰', 'required': 24, 'actual': 5, 'missing': 19},
+            ]}),
+            '[订单] 订单1：玫瑰 需24 有5 缺19',
+        )
+        line = m.format_watch_line('field_1', {'玫瑰': 19}, (0, 19), {'state': 'not_started'})
+        self.assertEqual(line, '[进度] 农田1 玫瑰×19 0/19 还差19；剩余时间未判定')
+
+    def test_timed_cycle_reports_current_round_only(self):
+        self.assertEqual(
+            m.format_cycle_time({'state': 'timed', 'seconds': 95, 'growing': 3}),
+            '这轮剩余约2分钟',
+        )
+        data = {'production': {'buildings': [{
+            'buildingUid': 7,
+            'slots': [
+                {'status': 'empty', 'timingReliable': True, 'remainingSeconds': 0},
+                {'status': 'growing', 'timingReliable': False, 'remainingSeconds': None},
+            ],
+        }]}}
+        with patch.object(m.decoded, 'plan', return_value={'buildingUid': 7}):
+            self.assertEqual(m.current_cycle_remaining('field_1', data)['state'], 'unknown')
+
     def run_monitor(self, result=None, error=None):
         with ExitStack() as stack:
             for name in [

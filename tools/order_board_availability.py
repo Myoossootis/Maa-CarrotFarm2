@@ -13,15 +13,25 @@ try:
     from .refresh_order import card_image, card_selected, card_pending
     from .order_template_click import template_hit
     from .scan_normal_orders import screenshot
+    from .maa_frame_normalize import EXPECTED_HEIGHT, EXPECTED_WIDTH
 except ImportError:
     import decoded_runtime as decoded
     from ensure_ranch_feed import recognized_text
     from refresh_order import card_image, card_selected, card_pending
     from order_template_click import template_hit
     from scan_normal_orders import screenshot
+    from maa_frame_normalize import EXPECTED_HEIGHT, EXPECTED_WIDTH
 
 ROOT = Path(__file__).resolve().parents[1]
 WAITING_STATES = {'board_unavailable', 'board_loading', 'order_capacity_exhausted', 'order_batch_unavailable'}
+# Live FramePool frames are often a few pixels short of 1358. The same drift is
+# already accepted by top_letterbox_offset; an exact height check rejected them.
+BOARD_HEIGHT_TOLERANCE = 16
+
+
+def board_frame(frame):
+    height, width = frame.shape[:2]
+    return width == EXPECTED_WIDTH and abs(height - EXPECTED_HEIGHT) <= BOARD_HEIGHT_TOLERANCE
 
 
 def empty_grid(frame):
@@ -47,7 +57,7 @@ def read_availability(tasker, frame, kind):
         raise ValueError('batch board availability only supports party/takeout')
     ready = {'party': 'VerifyPartyOrdersReady', 'takeout': 'VerifyTakeoutOrdersReady'}[kind]
     result = dict(status='board_unknown', reason='unrecognized_board', next_available=None)
-    if frame.shape[:2] != (1358, 720) or template_hit(frame, ready) is None:
+    if not board_frame(frame) or template_hit(frame, ready) is None:
         return result
     caption = recognized_text(tasker, frame, (205, 305, 335, 78), expected=(r'.+',))
     counter = re.findall(r'(\d+)\s*/\s*(\d+)', caption)

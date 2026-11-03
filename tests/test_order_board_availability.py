@@ -13,6 +13,7 @@ import numpy as np
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / 'tools'))
 import order_board_availability as board
+from maa_frame_normalize import EXPECTED_HEIGHT
 import check_first_orders as first
 import complete_batch_orders as batch
 from tools import run_short_cycle as cycle
@@ -75,6 +76,15 @@ class BoardAvailabilityTests(unittest.TestCase):
             self.assertEqual(board.read_availability(None, self.frame, 'takeout')['status'], 'board_unknown')
             self.assertEqual(board.read_availability(None, self.frame[:1300], 'party')['status'], 'board_unknown')
             read.assert_not_called()
+
+    def test_live_short_frame_still_reads_the_board(self):
+        short = self.frame[:EXPECTED_HEIGHT - 5]
+        self.assertEqual(short.shape[:2], (1353, 720))
+        with patch.object(board, 'recognized_text', return_value='完成订单次数:0/6已达每日恢复6次上限') as read:
+            result = board.read_availability(None, short, 'party')
+        read.assert_called_once()
+        self.assertEqual(result['status'], 'board_loading')
+        self.assertNotEqual(result['reason'], 'unrecognized_board')
 
     def test_visible_card_is_available_but_other_unknown_frames_are_blocked(self):
         frame = self.frame.copy()

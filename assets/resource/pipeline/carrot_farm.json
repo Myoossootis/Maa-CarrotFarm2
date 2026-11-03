@@ -1,4 +1,14 @@
 {
+    "UiProgressLog": {
+        "recognition": "DirectHit",
+        "action": "DoNothing",
+        "focus": {
+            "Node.Recognition.Succeeded": {
+                "content": "进度",
+                "display": ["log"]
+            }
+        }
+    },
     "ManualPlantingOnce": {
         "action": "Custom",
         "custom_action": "ManualPlantingOnce",
@@ -16,6 +26,11 @@
     "OpenDecodedDashboard": {
         "action": "Custom",
         "custom_action": "OpenDecodedDashboard",
+        "timeout": 15000
+    },
+    "OpenFarmHud": {
+        "action": "Custom",
+        "custom_action": "OpenFarmHud",
         "timeout": 15000
     },
     "RuntimePreflight": {
@@ -424,25 +439,25 @@
         "recognition": "TemplateMatch",
         "template": [
             "navigation/restaurant_entry.png",
-            "navigation/restaurant_entry_lid.png"
+            "navigation/restaurant_entry_lid.png",
+            "navigation/restaurant_entry_map.png",
+            "navigation/restaurant_entry_map_98.png"
         ],
         "roi": [
             0,
-            1160,
-            140,
-            193
+            1100,
+            160,
+            253
         ],
         "threshold": [
             0.72,
+            0.9,
+            0.85,
             0.9
         ],
         "method": 5,
         "order_by": "Score",
         "action": "Click",
-        "target": [
-            58,
-            1270
-        ],
         "post_delay": 1000,
         "next": [
             "VerifyFarmEntryVisible"
@@ -547,16 +562,20 @@
         "recognition": "TemplateMatch",
         "template": [
             "navigation/restaurant_entry.png",
-            "navigation/restaurant_entry_lid.png"
+            "navigation/restaurant_entry_lid.png",
+            "navigation/restaurant_entry_map.png",
+            "navigation/restaurant_entry_map_98.png"
         ],
         "roi": [
             0,
-            1160,
-            140,
-            193
+            1100,
+            160,
+            253
         ],
         "threshold": [
             0.72,
+            0.9,
+            0.85,
             0.9
         ],
         "method": 5,
@@ -844,16 +863,20 @@
         "recognition": "TemplateMatch",
         "template": [
             "navigation/restaurant_entry.png",
-            "navigation/restaurant_entry_lid.png"
+            "navigation/restaurant_entry_lid.png",
+            "navigation/restaurant_entry_map.png",
+            "navigation/restaurant_entry_map_98.png"
         ],
         "roi": [
             0,
-            1160,
-            140,
-            193
+            1100,
+            160,
+            253
         ],
         "threshold": [
             0.72,
+            0.9,
+            0.85,
             0.9
         ],
         "method": 5,
@@ -861,10 +884,6 @@
         "action": "Click",
         "rate_limit": 100,
         "timeout": 1000,
-        "target": [
-            58,
-            1270
-        ],
         "post_delay": 300,
         "next": [
             "WaitNormalOrdersAfterRestaurant"
@@ -1244,7 +1263,7 @@
         "timeout": 86400000,
         "focus": {
             "Node.Action.Starting": {
-                "content": "开始聚会订单日常：切「聚会订单」页签 → 扫客人需求 → 缺口排产领取 → 勾「完成6次」接受。日志打印[订单]/[员工安排]/[交单]。监控预览在左上角。",
+                "content": "开始聚会订单日常：切「聚会订单」页签 → 扫客人需求 → 缺口排产领取 → 勾「完成6次」接受。日志打印[订单]/[员工安排]/[交单]。监控预览随当前布局。",
                 "display": [
                     "log",
                     "toast"
@@ -1303,7 +1322,7 @@
         "timeout": 86400000,
         "focus": {
             "Node.Action.Starting": {
-                "content": "开始外卖订单日常：切「外卖订单」页签 → 扫客人需求 → 缺口排产领取 → 勾「完成6次」接受。日志打印[订单]/[员工安排]/[交单]。监控预览在左上角。",
+                "content": "开始外卖订单日常：切「外卖订单」页签 → 扫客人需求 → 缺口排产领取 → 勾「完成6次」接受。日志打印[订单]/[员工安排]/[交单]。监控预览随当前布局。",
                 "display": [
                     "log",
                     "toast"
@@ -1362,7 +1381,7 @@
         "timeout": 86400000,
         "focus": {
             "Node.Action.Starting": {
-                "content": "开始普通订单日常。日志将打印订单信息与员工安排；监控预览：左上角。",
+                "content": "开始普通订单日常。日志将打印订单信息与员工安排；监控预览随当前布局。",
                 "display": [
                     "log",
                     "toast"
@@ -1596,7 +1615,7 @@
                 ]
             },
             "Node.Action.Succeeded": {
-                "content": "普通3倍循环已结束，完成单数与等待原因见日志。",
+                "content": "普通3倍循环已结束。本轮完成单数与次数见日志中的完成统计。",
                 "display": [
                     "log"
                 ]

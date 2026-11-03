@@ -247,7 +247,7 @@ class RunDailyOrders(CustomAction):
         if apply and not continuous:
             print(
                 "[日常] 跳过清地弹窗，直接开跑（请事先清残留作物/旧计划）。"
-                "监控预览：左上角；帧目录 .tmp/maa_monitor",
+                "监控预览随当前布局；帧目录 .tmp/maa_monitor",
                 flush=True,
             )
         if apply and not wait_for_background_ready(is_stopping=stopping):
@@ -290,4 +290,24 @@ class RunDailyOrders(CustomAction):
                "日志将打印订单信息与员工安排。聚会/外卖自动切页签并走批量完成6次。"),
             flush=True,
         )
-        return run_cycle_worker(arguments, is_stopping=stopping, script=script)
+        ui_log_failed = False
+
+        def publish(line):
+            nonlocal ui_log_failed
+            if ui_log_failed:
+                return
+            detail = context.run_task('UiProgressLog', {
+                'UiProgressLog': {
+                    'focus': {
+                        'Node.Recognition.Succeeded': {
+                            'content': line[:800],
+                            'display': ['log'],
+                        }
+                    }
+                }
+            })
+            if detail is None:
+                ui_log_failed = True
+                print('[日志] 界面进度日志节点没有执行，后续只写入工作进程日志。', flush=True)
+
+        return run_cycle_worker(arguments, is_stopping=stopping, script=script, publish=publish)

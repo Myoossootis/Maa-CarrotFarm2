@@ -20,15 +20,25 @@ def read(path):
     return json.loads(path.read_text(encoding='utf-8')) if path.exists() else None
 
 
+TERMINAL_STATUSES = frozenset({'collected', 'superseded_plan_cleared'})
+
+
 def owner(slot, data):
     decoded.validate(data)
-    if data['packageVersion'] != '90':
-        raise decoded.DecodeError('Employee operation version is unverified')
+    decoded.require_normal_package(data)
     entry = decoded.plan(slot, data)
     if any(type(worker.get(key)) is not int or worker[key] <= 0
            for worker in entry['employees'] for key in ('uid', 'itemId', 'level')):
         raise decoded.DecodeError('Employee identity/level is incomplete')
     return {key: entry[key] for key in ('buildingUid', 'buildingItemId', 'employees')}
+
+
+def unfinished_active(root=None):
+    """A collected or superseded record stays on disk, but must not be resumed."""
+    record = active(root)
+    if record and record.get('status') in TERMINAL_STATUSES:
+        return None
+    return record
 
 
 def active(root=None):
@@ -49,7 +59,7 @@ def active(root=None):
 def begin(allocation, root=None):
     root = Path(root or ROOT)
     old = active(root)
-    if old and old['status'] != 'collected':
+    if old and old['status'] not in TERMINAL_STATUSES:
         raise decoded.DecodeError('Previous employee operation unresolved; resume before new plans')
     identity = uuid4().hex
     folder = root / identity
@@ -66,7 +76,8 @@ def validate_target(allocation, data):
     target = allocation.get('bound_target') or {}
     order = next((row for row in data['orders'] if row['category'] == 'normal'
                   and row['uid'] == target.get('game_order_uid')), None)
-    if (data['packageVersion'] != '90' or target.get('batch_count') != 3
+    decoded.require_normal_package(data)
+    if (target.get('batch_count') != 3
             or target.get('data_source') != 'decoded' or not order or order['statusCode'] != 1
             or {row['name']: row['count'] * 3 for row in order['costs']}
                 != {row['name']: row['required'] for row in target.get('items', [])}
@@ -93,7 +104,8 @@ def begin_edit(record, slot, items, data):
     expected = next(job['items'] for job in record['allocation']['jobs'] if job['slot_id'] == slot)
     if items != expected:
         raise decoded.DecodeError('Requested items differ from bound production operation')
-    entry = dict(status='editing', slot_id=slot, items=items, owner=identity, package_version='90',
+    entry = dict(status='editing', slot_id=slot, items=items, owner=identity,
+                 package_version=data['packageVersion'],
                  assignment_id=record['assignment_id'], automatic_retry_allowed=False)
     write_json(path, entry)
     return entry
@@ -158,4 +170,65 @@ def mark(record, status):
         record['saved'] = [read(job_path(record, job['slot_id'])) for job in record['allocation']['jobs']]
         record['state_reader'] = 'decoded'
     write_json(Path(record['operation_dir']) / 'assignment.json', record)
+    return record
+
+
+def supersede_cleared_plans(record, data):
+    """Close a saved op when bound recipes are gone and the employee plan is idle.
+
+    Physical crops on the land may still exist (manual planting). This only
+    authorizes skipping our bound tomato/corn-style collection; it never clicks.
+    """
+    decoded.validate(data)
+    decoded.require_normal_package(data)
+    if record.get('status') != 'saved':
+        raise decoded.DecodeError('Only a saved production operation can be superseded')
+    evidence = []
+    for job in record['allocation']['jobs']:
+        slot = job['slot_id']
+        if collection_record(record, slot) is not None:
+            raise decoded.DecodeError(f'{slot}: collection history must be reconciled before superseding')
+        saved = read(job_path(record, slot))
+        if not saved or saved.get('status') != 'saved':
+            raise decoded.DecodeError(f'{slot}: missing saved job while superseding')
+        identity = owner(slot, data)
+        def stable(entry):
+            return {
+                'buildingUid': entry['buildingUid'],
+                'buildingItemId': entry['buildingItemId'],
+                'employees': [{'uid': worker['uid'], 'itemId': worker['itemId']}
+                              for worker in entry['employees']],
+            }
+        if stable(identity) != stable(saved['owner']):
+            raise decoded.DecodeError(f'{slot}: worker/building changed; keep unresolved')
+        current = decoded.plan_items(slot, data)
+        entry = decoded.plan(slot, data)
+        if current == saved['items']:
+            raise decoded.DecodeError(f'{slot}: bound recipe still present; collect instead')
+        if (entry['targets'] or entry['heldProducts'] or entry.get('productionOperations')
+                or any(row['count'] > 0 for row in entry.get('accumulated', []))):
+            raise decoded.DecodeError(f'{slot}: employee plan still busy; cannot supersede')
+        evidence.append({
+            'slot_id': slot,
+            'saved_items': saved['items'],
+            'current_items': current,
+            'owner': identity,
+            'saved_owner': saved['owner'],
+            'heldProducts': entry['heldProducts'],
+            'targets': entry['targets'],
+        })
+    record = {
+        **record,
+        'status': 'superseded_plan_cleared',
+        'supersede_evidence': evidence,
+        'superseded_at_utc': datetime.now(timezone.utc).isoformat(),
+        'package_version_at_supersede': data['packageVersion'],
+        'automatic_retry_allowed': False,
+    }
+    write_json(Path(record['operation_dir']) / 'assignment.json', record)
+    write_json(Path(record['operation_dir']) / 'supersede_cleared.json', {
+        'assignment_id': record['assignment_id'],
+        'evidence': evidence,
+        'captured_at_utc': datetime.now(timezone.utc).isoformat(),
+    })
     return record

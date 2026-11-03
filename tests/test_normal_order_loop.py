@@ -92,11 +92,27 @@ class NormalLoopTests(unittest.TestCase):
         self.assertEqual([c.args for c in step.call_args_list[:3]],[('--prepare-only',)]*3)
         self.assertEqual((result['completed_orders'],result['completed_count']),(1,3))
 
+    def test_loop_end_prints_confirmed_completion_tally(self):
+        buffer = io.StringIO()
+        step = Mock(side_effect=[PREPARED, completed('one')])
+        with patch('sys.stdout', buffer):
+            loop.loop(step, self.folder, max_orders=1,
+                      read_receipt=lambda: {'status': 'completed', 'operation_id': 'one'})
+        self.assertIn('[普通3倍] 本轮完成统计：1单／3次（状态=已完成）', buffer.getvalue())
+
+    def test_completion_line_names_known_stop_reasons(self):
+        self.assertEqual(
+            loop.completion_line(dict(status='waiting_for_materials', completed_orders=0, completed_count=0)),
+            '[普通3倍] 本轮完成统计：0单／0次（状态=等待材料）',
+        )
+
 
 class ProductionResumeTests(unittest.TestCase):
     def test_saved_assignment_monitors_canonical_file_without_new_save(self):
         saved=dict(status='saved',assignment_id='one',operation_dir='bound/one')
         with patch.object(loop.employees,'active',side_effect=[saved,dict(saved,status='collected')]), \
+                patch.object(loop.decoded,'snapshot',return_value={'packageVersion':'98'}), \
+                patch.object(loop.employees,'supersede_cleared_plans',side_effect=loop.decoded.DecodeError('still present')), \
                 patch.object(loop.delivery,'load',return_value=None),patch.object(loop,'run_script') as run:
             loop.finish_production(20,7200)
         run.assert_called_once_with('monitor_employee_products.py','--assignment-file',str(Path('bound/one/assignment.json')),
@@ -121,17 +137,20 @@ class ProductionResumeTests(unittest.TestCase):
 
 class LoopEntryGuardTests(unittest.TestCase):
     def test_unknown_version_stops_before_production_policy_or_game_inputs(self):
+        output = io.StringIO()
         with tempfile.TemporaryDirectory() as folder, \
                 patch.object(loop,'ROOT',Path(folder)),patch('sys.argv',['loop','--apply']), \
                 patch.dict('os.environ',{'CARROT_STATE_READER':'decoded'}), \
                 patch.object(loop,'cycle_lock',return_value=nullcontext()), \
                 patch.object(loop.decoded,'snapshot',return_value={'packageVersion':'999'}), \
-                patch.object(loop,'finish_production') as production,patch.object(loop,'run_script') as run:
-            with self.assertRaisesRegex(loop.decoded.DecodeError,'version is unverified'):
+                patch.object(loop,'finish_production') as production,patch.object(loop,'run_script') as run, \
+                patch('sys.stdout', output):
+            with self.assertRaisesRegex(loop.decoded.DecodeError,'999.*unverified'):
                 loop.main()
             production.assert_not_called();run.assert_not_called()
             state=json.loads(next(Path(folder).rglob('summary.json')).read_text())
             self.assertEqual(state['status'],'failed')
+            self.assertIn('[普通3倍] 本轮完成统计：0单／0次（状态=失败）', output.getvalue())
 
     def test_lock_conflict_keeps_original_error_and_failure_report(self):
         with tempfile.TemporaryDirectory() as folder, \

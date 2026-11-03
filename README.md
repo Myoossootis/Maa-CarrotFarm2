@@ -2,7 +2,7 @@
 
 基于 [MaaFramework](https://github.com/MaaXYZ/MaaFramework) 的 **Win32 后台**自动化：FramePool 截图 + PostMessage 点击，不抢前台鼠标。
 
-开发版本 **0.8.1**：新增显式普通订单3倍持续循环CLI，仅允许已验证客户端90，库存足够才交单，缺料保存目标等待员工排产对账。原日常UI仍单轮；真实连续两轮及缺料闭环尚未验收。用法及证据见[普通单优先计划](docs/NORMAL_ORDER_PRIORITY_2026-10-25.md)，开发约定见[CONTRIBUTING.md](CONTRIBUTING.md)，交付写入[版本记录](CHANGELOG.md)。
+开发版本 **0.11.8**：普通订单3倍持续循环已接入Maa任务，缺料支持员工分批补产与恢复；普通订单／生产路径允许客户端90、98，聚会／外卖次数语义仍仅核对90。新增只读操作台查看监控、订单、背包与岗位；其开始／暂停／结束仅改变本地选择，真实业务仍在Maa任务列表运行与停止。当前审计和验收边界见[审计报告](docs/AUDIT_2026-11-03.md)，开发约定见[CONTRIBUTING.md](CONTRIBUTING.md)，交付写入[版本记录](CHANGELOG.md)。
 
 > **方案决定（2026-10-25）**：Cocos 内部调用、Frida 注入及 WMPF 调试桥实验已封存，**不纳入使用脚本方案**。现有脚本维持原状；详见[封存说明](docs/ARCHIVED_COCOS_RESEARCH_2026-10-25.md)。
 
@@ -26,7 +26,9 @@ python -m venv .venv
 
 依赖本机已按 Maa 惯例装好的 Framework / 资源（见 deps/ 与上游文档）。日常业务脚本在 .venv 里跑即可。
 
-## 推荐：短循环（Day2）
+## 历史短循环 CLI（Day2）
+
+当前普通订单优先使用Maa任务「普通订单3倍持续循环」；已有生产先对账恢复，不按旧清地提示覆盖当前计划。以下保留历史CLI用法。
 
 扫单/交单 → 员工排产 → 监控收取 → 按缺口作物重匹配交单。
 

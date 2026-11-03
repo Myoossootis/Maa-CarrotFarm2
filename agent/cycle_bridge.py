@@ -4,6 +4,7 @@ from collections import deque
 from datetime import datetime, timezone
 import os
 from pathlib import Path
+from queue import Empty, Queue
 import subprocess
 import sys
 import tempfile
@@ -12,9 +13,15 @@ import time
 
 
 ROOT = Path(__file__).resolve().parents[1]
+UI_PREFIXES = ('[订单]', '[进度]', '[错误]', '[交单]', '[普通3倍]', '[跳过]', '[停止]', '[冷却]', '[等待]', '[结束]')
 
 
-def run_cycle_worker(arguments, *, is_stopping, script='cycle'):
+def show_in_ui(text):
+    """Panel lines only. The worker log file keeps the full stream."""
+    return text.startswith(UI_PREFIXES)
+
+
+def run_cycle_worker(arguments, *, is_stopping, script='cycle', publish=None):
     if is_stopping():
         return False
     work = ROOT / '.tmp' / 'maa_ui_runs'
@@ -35,15 +42,39 @@ def run_cycle_worker(arguments, *, is_stopping, script='cycle'):
             creationflags=subprocess.CREATE_NO_WINDOW if os.name == 'nt' else 0,
         )
         tail = deque(maxlen=80)
+        lines = Queue()
+        publish_failed = False
+
+        def emit(line):
+            nonlocal publish_failed
+            text = line.rstrip()
+            if not text:
+                return
+            print(text, flush=True)
+            if publish is None or publish_failed or not show_in_ui(text):
+                return
+            try:
+                publish(text)
+            except Exception as error:
+                publish_failed = True
+                print(f'[日志] 界面日志发送失败：{error}', flush=True)
+
+        def drain():
+            while True:
+                try:
+                    emit(lines.get_nowait())
+                except Empty:
+                    return
 
         def forward_output():
             with log_path.open('w', encoding='utf-8') as log:
                 log.write(f'script={script} arguments={arguments!r}\n')
+                log.flush()
                 for line in iter(lambda: process.stdout.readline(2048), ''):
                     tail.append(line)
                     log.write(line)
                     log.flush()
-                    print(line.rstrip(), flush=True)
+                    lines.put(line)
 
         reader = threading.Thread(target=forward_output, daemon=True)
         reader.start()
@@ -51,6 +82,7 @@ def run_cycle_worker(arguments, *, is_stopping, script='cycle'):
         stop_at = None
         try:
             while process.poll() is None:
+                drain()
                 if is_stopping():
                     if stop_at is None:
                         cancel.touch()
@@ -70,6 +102,7 @@ def run_cycle_worker(arguments, *, is_stopping, script='cycle'):
                     process.terminate()
                 process.wait(timeout=10)
             reader.join(timeout=2)
+            drain()
             process.stdout.close()
         with log_path.open('a', encoding='utf-8') as log:
             log.write(f'\nexit_code={process.returncode} cancelled={stopped}\n')

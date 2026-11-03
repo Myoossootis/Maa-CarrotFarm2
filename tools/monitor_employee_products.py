@@ -50,6 +50,67 @@ CROP_MONITOR_TIMEOUT_HINTS = {
 }
 
 
+def format_order_need(allocation):
+    """One line: which order, each item's need / stock / gap."""
+    items = (allocation or {}).get('target_items') or []
+    order = (allocation or {}).get('target_order')
+    if not items:
+        return f'[订单] 订单{order} 没有需求明细'
+    parts = [
+        f"{row.get('name')} 需{row.get('required')} 有{row.get('actual')} 缺{row.get('missing')}"
+        for row in items
+    ]
+    return f"[订单] 订单{order}：" + '；'.join(parts)
+
+
+def current_cycle_remaining(slot_id, data):
+    """Longest reliable timer on slots already growing. None when unread."""
+    if not data:
+        return None
+    try:
+        entry = decoded.plan(slot_id, data)
+    except decoded.DecodeError:
+        return {'state': 'unread'}
+    areas = [area for area in (data.get('production') or {}).get('buildings') or []
+             if area.get('buildingUid') == entry.get('buildingUid')]
+    if len(areas) != 1:
+        return {'state': 'unread'}
+    growing = 0
+    seconds = []
+    for slot in areas[0].get('slots') or []:
+        if slot.get('status') not in ('growing', 'needs_feed', 'mature'):
+            continue
+        growing += 1
+        remaining = slot.get('remainingSeconds')
+        if slot.get('timingReliable') is True and type(remaining) is int and remaining >= 0:
+            seconds.append(remaining)
+    if not growing:
+        return {'state': 'not_started'}
+    if not seconds:
+        return {'state': 'unknown', 'growing': growing}
+    return {'state': 'timed', 'seconds': max(seconds), 'growing': growing}
+
+
+def format_cycle_time(info):
+    if not info or info.get('state') != 'timed':
+        return '剩余时间未判定'
+    seconds = info['seconds']
+    if seconds <= 0:
+        return '这轮已到时'
+    return f"这轮剩余约{(seconds + 59) // 60}分钟"
+
+
+def format_watch_line(slot_id, items, progress, cycle):
+    label = SLOTS.get(slot_id, {}).get('label', slot_id)
+    plan = '、'.join(f'{name}×{qty}' for name, qty in (items or {}).items()) or '空'
+    if progress:
+        done, total = progress
+        count = f'{done}/{total} 还差{max(0, total - done)}'
+    else:
+        count = '进度未知'
+    return f'[进度] {label} {plan} {count}；{format_cycle_time(cycle)}'
+
+
 def suggested_timeout_seconds(
     items_by_slot: dict[str, dict[str, int]] | None,
     default: int = 2700,
@@ -119,12 +180,16 @@ def monitor(plans: dict[str, int], poll_seconds: int, timeout_seconds: int, expe
         if not tasker.bind(resource, controller):
             raise RuntimeError("Maa tasker binding failed")
         checkpoint("monitoring")
+        reported = {}
+        if operation:
+            print(format_order_need(operation.get('allocation')), flush=True)
         while len(collected) < len(plans):
             if time.monotonic() - started > timeout_seconds:
                 break
             for slot_id, required in plans.items():
                 if slot_id in collected:
                     continue
+                data = None
                 try:
                     if decoded.enabled() and expected_items is not None:
                         data = decoded.snapshot()
@@ -171,21 +236,17 @@ def monitor(plans: dict[str, int], poll_seconds: int, timeout_seconds: int, expe
                 errors[slot_id] = 0
                 observations[slot_id] = result
                 progress = result.get("progress")
-                if progress is not None:
-                    print(
-                        f"{slot_id}: progress {progress[0]}/{progress[1]} collected={result['collected']}",
-                        flush=True,
-                    )
-                else:
-                    print(
-                        f"{slot_id}: progress unknown collected={result['collected']} reason={result.get('reason')}",
-                        flush=True,
-                    )
+                cycle = current_cycle_remaining(slot_id, data) if data else None
+                label = SLOTS.get(slot_id, {}).get('label', slot_id)
+                line = (f'[进度] {label} 已收取' if result.get('collected') else
+                        format_watch_line(slot_id, (expected_items or {}).get(slot_id), progress, cycle))
+                if reported.get(slot_id) != line:
+                    reported[slot_id] = line
+                    print(line, flush=True)
                 checkpoint("monitoring")
                 if result["collected"]:
                     collected[slot_id] = datetime.now(timezone.utc).isoformat()
                     checkpoint("collected")
-                    print(f"{slot_id}: collected", flush=True)
                     # Decoded mode already confirmed both clearance and inventory.
                     # Never open/reset a plan after harvesting.
                     cleared_slots.append(slot_id)

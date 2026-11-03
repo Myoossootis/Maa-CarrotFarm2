@@ -125,7 +125,7 @@ class NormalDeliveryUITests(unittest.TestCase):
                 patch.object(normal.decoded,'enabled',return_value=True), \
                 patch.object(normal.decoded,'snapshot',return_value={'packageVersion':'91'}), \
                 patch.object(normal.delivery,'load') as receipt,patch.object(normal,'find_window') as connect:
-            with self.assertRaisesRegex(normal.decoded.DecodeError,'version is unverified'):normal.main()
+            with self.assertRaisesRegex(normal.decoded.DecodeError, r'unverified'):normal.main()
             connect.assert_not_called();receipt.assert_not_called()
 
     def test_completed_but_not_returned_resumes_only_farm_return(self):

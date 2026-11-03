@@ -27,6 +27,24 @@ from agent.order_preferences import validate_allowed_products
 
 ROOT = Path(__file__).resolve().parents[1]
 
+STATUS_LABELS = {
+    'complete': '已完成',
+    'failed': '失败',
+    'cancelled': '已取消',
+    'no_actionable_orders': '无可接订单',
+    'waiting_for_materials': '等待材料',
+    'running': '进行中',
+    'recovering_production': '恢复生产',
+}
+
+
+def completion_line(summary):
+    """Human tally for this loop only. Confirmed rewarded triples count; a wave does not."""
+    status = STATUS_LABELS.get(summary.get('status'), summary.get('status') or '未知')
+    orders = summary.get('completed_orders') or 0
+    count = summary.get('completed_count') or 0
+    return f'[普通3倍] 本轮完成统计：{orders}单／{count}次（状态={status}）'
+
 
 def loop(step, folder, *, max_orders=0, read_receipt=delivery.load, produce=None):
     """Only a confirmed rewarded triple counts; production always leads to a fresh scan."""
@@ -84,13 +102,21 @@ def loop(step, folder, *, max_orders=0, read_receipt=delivery.load, produce=None
     finally:
         summary['updated_at_utc'] = datetime.now(timezone.utc).isoformat()
         write_json(folder / 'summary.json', summary)
+        print(completion_line(summary), flush=True)
     return summary
 
 
 def finish_production(poll, timeout, *, create=False):
     """Resume canonical operations before consulting shared latest projections."""
     operation = employees.active()
-    if operation and operation['status'] == 'collected':
+    if operation and operation['status'] == 'saved':
+        data = decoded.snapshot()
+        decoded.require_normal_package(data)
+        try:
+            operation = employees.supersede_cleared_plans(operation, data)
+        except decoded.DecodeError:
+            pass
+    if operation and operation['status'] in employees.TERMINAL_STATUSES:
         operation = None
     if not operation and not create:
         return
@@ -141,8 +167,7 @@ def main():
     os.environ.setdefault('CARROT_UI_CANCEL_FILE', str(folder / 'cancel'))
     def step(*arguments):
         if arguments == ('--prepare-only',):
-            if decoded.snapshot()['packageVersion'] != '90':
-                raise decoded.DecodeError('Normal loop version changed; no UI input')
+            decoded.require_normal_package(decoded.snapshot())
             pending = delivery.load()
             if not pending or (pending['status'] == 'completed' and pending.get('returned_to_farm', True) is not False):
                 policy = ['--order-type', 'normal']
@@ -152,12 +177,13 @@ def main():
         run_script('complete_normal_orders.py', *arguments)
         return json.loads(COMPLETION.read_text(encoding='utf-8'))
     write_json(folder / 'summary.json', dict(status='recovering_production',completed_orders=0,completed_count=0))
+    entered_loop = False
     try:
         with cycle_lock():
             data = decoded.snapshot()
-            if data['packageVersion'] != '90':
-                raise decoded.DecodeError('Normal loop version is unverified; no UI input')
+            decoded.require_normal_package(data)
             finish_production(args.poll_seconds, args.timeout_seconds)
+            entered_loop = True
             summary = loop(step, folder, max_orders=args.max_orders,
                            produce=lambda: finish_production(args.poll_seconds, args.timeout_seconds, create=True))
         print(json.dumps(summary, ensure_ascii=False))
@@ -166,6 +192,8 @@ def main():
         state = json.loads((folder / 'summary.json').read_text(encoding='utf-8'))
         state.update(status='cancelled' if isinstance(error, TaskCancelled) else 'failed', error=str(error))
         write_json(folder / 'summary.json', state)
+        if not entered_loop:
+            print(completion_line(state), flush=True)
         raise
     finally:
         if previous_cancel is None:

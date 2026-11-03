@@ -252,9 +252,7 @@ def main() -> int:
     args = parser.parse_args()
     if args.allow_partial and not decoded.enabled():
         parser.error('Partial waves require the formal decoded worker and bound operation records')
-    operation = operations.active() if args.apply and decoded.enabled() else None
-    if operation and operation['status'] == 'collected':
-        operation = None
+    operation = operations.unfinished_active() if args.apply and decoded.enabled() else None
     if args.resume and not operation:
         parser.error('No unfinished bound employee operation')
     allocation = operation['allocation'] if operation else plan_latest()

@@ -22,13 +22,26 @@ def farm_visible(frame):
             and template_hit(frame, 'ClickFarmEntryAlert') is None)
 
 
+def _confirm_farm(controller, *, already=False):
+    """Require two consecutive farm proofs; tolerate a short HUD flicker."""
+    confirmed = 0
+    for _ in range(12):
+        time.sleep(.3)
+        confirmed = confirmed + 1 if farm_visible(screenshot(controller)) else 0
+        if confirmed >= 2:
+            return dict(status='already_on_farm' if already else 'entered', clicks=0 if already else 1)
+    return None
+
+
 def enter_farm(controller):
     frame = screenshot(controller)
     if farm_visible(frame):
-        time.sleep(.3)
-        if farm_visible(screenshot(controller)):
-            return dict(status='already_on_farm', clicks=0)
-        raise RuntimeError('farm state not confirmed; no click')
+        confirmed = _confirm_farm(controller, already=True)
+        if confirmed is not None:
+            return confirmed
+        frame = screenshot(controller)
+        if farm_visible(frame):
+            raise RuntimeError('farm state not confirmed; no click')
     entry = ('ClickFarmEntry' if template_hit(frame, 'ClickFarmEntry') is not None
              else 'ClickFarmEntryAlert' if template_hit(frame, 'ClickFarmEntryAlert') is not None
              else None)
@@ -36,12 +49,9 @@ def enter_farm(controller):
         raise RuntimeError('farm entry not recognized; no click')
     if not click_template_node(controller, entry, frame):
         raise RuntimeError('farm entry click failed')
-    confirmed = 0
-    for _ in range(10):
-        time.sleep(.3)
-        confirmed = confirmed + 1 if farm_visible(screenshot(controller)) else 0
-        if confirmed >= 2:
-            return dict(status='entered', clicks=1)
+    confirmed = _confirm_farm(controller, already=False)
+    if confirmed is not None:
+        return confirmed
     raise RuntimeError('farm entry not confirmed; stopped without a second click')
 
 

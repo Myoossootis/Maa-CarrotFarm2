@@ -308,6 +308,40 @@ def claim_completed_reward(controller: Win32Controller, tasker=None) -> bool:
     return True
 
 
+def duplicate_accept_blocked(previous, items, *, now=None):
+    """True when this exact recipe and stock were accepted moments ago.
+
+    A broken previous record raises. It is not permission to accept again.
+    """
+    if not isinstance(previous, dict):
+        raise ValueError('Previous completion record must be an object')
+    prev = previous
+    submitted = prev.get('submitted', [])
+    if not isinstance(submitted, list):
+        raise ValueError('Previous submitted orders must be a list')
+    prev_gen = prev.get('generated_at_utc')
+    if not prev_gen:
+        if submitted:
+            raise ValueError('Previous submitted orders lack a timestamp')
+        return False
+    moment = now or datetime.now(timezone.utc)
+    generated = datetime.fromisoformat(prev_gen)
+    if generated.tzinfo is None:
+        generated = generated.replace(tzinfo=timezone.utc)
+    age = (moment - generated).total_seconds()
+    if not 0 <= age <= 300:
+        return False
+    signature = order_signature(items)
+    current = {(item['name'], int(item['actual'])) for item in items}
+    for prev_sub in submitted:
+        if order_signature(prev_sub.get('items') or []) != signature:
+            continue
+        previous_actual = {(item['name'], int(item['actual'])) for item in prev_sub.get('items') or []}
+        if previous_actual == current:
+            return True
+    return False
+
+
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--target-file", type=Path, help="cycle/target JSON; rematch by shortage crops on a fresh board scan (not frozen order id)")
@@ -330,8 +364,10 @@ def main() -> int:
     RESULT.parent.mkdir(parents=True, exist_ok=True)
     try:
         previous_completion = json.loads(RESULT.read_text(encoding="utf-8"))
-    except Exception:
+    except FileNotFoundError:
         previous_completion = {}
+    except (OSError, json.JSONDecodeError) as error:
+        raise decoded.DecodeError('上次交单记录无法读取，未接受：' + str(error)) from error
     RESULT.write_text(
         json.dumps(
             {"generated_at_utc": datetime.now(timezone.utc).isoformat(), "status": "running"},
@@ -340,8 +376,8 @@ def main() -> int:
         encoding="utf-8",
     )
     startup_data = decoded.snapshot() if decoded.enabled() else None
-    if startup_data is not None and startup_data['packageVersion'] != '90':
-        raise decoded.DecodeError('Normal order workflow package version is unverified; no UI input')
+    if startup_data is not None:
+        decoded.require_normal_package(startup_data)
     pending_delivery = delivery.load() if startup_data is not None else None
     if (pending_delivery and pending_delivery['status'] == 'completed'
             and pending_delivery.get('returned_to_farm', True) is not False):
@@ -509,29 +545,13 @@ def main() -> int:
 
             # Refuse to re-accept the same recipe+stock snapshot within a few
             # minutes (false-accept loops leave inventory unchanged).
-            try:
-                prev = previous_completion if isinstance(previous_completion, dict) else {}
-                prev_gen = prev.get("generated_at_utc")
-                if prev_gen:
-                    age = (datetime.now(timezone.utc) - datetime.fromisoformat(prev_gen)).total_seconds()
-                    if 0 <= age <= 300:
-                        for prev_sub in prev.get("submitted") or []:
-                            if order_signature(prev_sub.get("items") or []) != order_signature(items):
-                                continue
-                            prev_actual = {(i["name"], int(i["actual"])) for i in prev_sub.get("items") or []}
-                            cur_actual = {(i["name"], int(i["actual"])) for i in items}
-                            if prev_actual == cur_actual:
-                                skipped.append({
-                                    "order": index,
-                                    "reason": "duplicate_uncconsumed_accept",
-                                    "items": items,
-                                })
-                                items = []
-                                break
-                        if not items:
-                            continue
-            except Exception:
-                pass
+            if duplicate_accept_blocked(previous_completion, items):
+                skipped.append({
+                    "order": index,
+                    "reason": "duplicate_uncconsumed_accept",
+                    "items": items,
+                })
+                continue
 
             if decoded.enabled():
                 items = decoded.assert_order_unchanged(items)

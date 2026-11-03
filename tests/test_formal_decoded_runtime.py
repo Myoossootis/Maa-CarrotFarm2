@@ -3,7 +3,6 @@ import io
 import json
 import os
 from pathlib import Path
-import subprocess
 import sys
 import tempfile
 import unittest
@@ -53,17 +52,27 @@ class FormalBackendTests(unittest.TestCase):
         reader.select_order('normal', 1, 3)
 
     def test_worker_snapshot_uses_automation_not_family_or_ui(self):
-        with patch.object(reader.subprocess, 'run', return_value=subprocess.CompletedProcess([], 0, json.dumps(state()), '')) as run:
+        with patch.object(reader, '_request_report', return_value=state()) as request:
             data = reader.snapshot()
         self.assertEqual(data['mode'], 'automation')
-        self.assertEqual(run.call_args.args[0][2], 'automation')
-        self.assertNotIn('--apply', run.call_args.args[0])
+        self.assertEqual(request.call_args.args[0], 'automation')
+
+    def test_each_snapshot_reads_again_instead_of_reusing_the_bag(self):
+        first_state, second_state = state(), state()
+        second_state['inventory']['records'][0]['count'] = 4
+        second_state['storageSequence'] = 23
+        with patch.object(reader, '_request_report', side_effect=[first_state, second_state]) as request:
+            first = reader.snapshot()
+            second = reader.snapshot()
+        self.assertEqual(request.call_count, 2)
+        self.assertEqual(first['inventory']['records'][0]['count'], 9)
+        self.assertEqual(second['inventory']['records'][0]['count'], 4)
+        self.assertNotEqual(first['storageSequence'], second['storageSequence'])
 
     def test_error_and_stale_snapshot_never_fall_back(self):
-        with patch.object(reader.subprocess, 'run', return_value=subprocess.CompletedProcess([], 1, '', 'bad key')) as run:
+        with patch.object(reader, '_request_report', side_effect=reader.DecodeError('bad key')):
             with self.assertRaises(reader.DecodeError):
                 reader.snapshot()
-            run.assert_called_once()
         old = state()
         old['capturedAt'] = (datetime.now(timezone.utc) - timedelta(seconds=30)).isoformat()
         with self.assertRaises(reader.DecodeError):

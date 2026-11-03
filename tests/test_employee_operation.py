@@ -88,6 +88,18 @@ class EmployeeOperationTests(unittest.TestCase):
         with self.assertRaises(decoded.DecodeError):ops.begin({}, self.root)
         with self.assertRaises(decoded.DecodeError):ops.mark(self.record, 'collected')
 
+    def test_cleared_employee_plan_can_supersede_saved_operation_without_click(self):
+        self.saved()
+        self.record = ops.mark(self.record, 'saved')
+        with self.assertRaisesRegex(decoded.DecodeError, 'still present'):
+            ops.supersede_cleared_plans(self.record, ready())
+        result = ops.supersede_cleared_plans(self.record, idle())
+        self.assertEqual(result['status'], 'superseded_plan_cleared')
+        self.assertEqual(ops.active(self.root)['status'], 'superseded_plan_cleared')
+        self.assertIsNone(ops.unfinished_active(self.root))
+        next_record = ops.begin(dict(jobs=[dict(slot_id='field_1', items=self.items)]), self.root)
+        self.assertEqual(next_record['status'], 'applying')
+
     def test_real_save_helper_reserves_intent_before_only_save_click(self):
         from tools import configure_field_employee as workers
         ops.begin_edit(self.record, 'field_1', self.items, idle())
@@ -105,6 +117,19 @@ class EmployeeOperationTests(unittest.TestCase):
             workers.configure_items(None, None, 'field_1', self.items,
                 before_save=lambda data: ops.reserve_save(self.record, 'field_1', data))
         self.assertEqual(len(saves), 1)
+
+    def test_supersede_cannot_hide_unconfirmed_claim_or_accumulated_products(self):
+        self.saved()
+        record = ops.mark(self.record, 'saved')
+        for status in ('intent', 'unconfirmed', 'confirmed'):
+            with self.subTest(claim=status), patch.object(ops, 'collection_record', return_value={'status': status}):
+                with self.assertRaises(decoded.DecodeError):
+                    ops.supersede_cleared_plans(record, idle())
+        data = idle()
+        decoded.plan('field_1', data)['accumulated'] = [{'itemId': 157, 'name': '甘蔗', 'count': 1}]
+        with self.assertRaises(decoded.DecodeError):
+            ops.supersede_cleared_plans(record, data)
+        self.assertEqual(ops.active(self.root)['status'], 'saved')
 
 
 if __name__ == '__main__': unittest.main()

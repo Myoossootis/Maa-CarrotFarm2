@@ -5,6 +5,7 @@ from maa.tasker import Tasker
 
 import production_actions
 from decoded_dashboard_action import OpenDecodedDashboard
+from farm_hud_action import OpenFarmHud
 from manual_planting_action import ManualPlantingPreflight, ManualPlantingOnce
 
 
@@ -18,6 +19,7 @@ def main():
 
     actions = {
         'OpenDecodedDashboard': OpenDecodedDashboard(),
+        'OpenFarmHud': OpenFarmHud(),
         'ManualPlantingPreflight': ManualPlantingPreflight(),
         'ManualPlantingOnce': ManualPlantingOnce(),
         'ConfirmProductionCycleStart': production_actions.ConfirmProductionCycleStart(),
