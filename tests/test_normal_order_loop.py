@@ -3,6 +3,7 @@ import json
 from pathlib import Path
 import tempfile
 import unittest
+from contextlib import nullcontext
 from unittest.mock import Mock, patch
 
 from tools import run_normal_order_loop as loop
@@ -62,6 +63,113 @@ class NormalLoopTests(unittest.TestCase):
             with self.assertRaises(TaskCancelled):loop.loop(Mock(),self.folder)
         summary=json.loads((self.folder/'summary.json').read_text(encoding='utf-8'))
         self.assertEqual((summary['status'],summary['completed_orders']),('cancelled',0))
+
+    def test_shortage_production_requires_fresh_scan_before_submission(self):
+        gap=dict(PREPARED,target_order=dict(order=1,missing_items=[{'missing':41}],production_targets=[{'needed':41}]))
+        step=Mock(side_effect=[gap, PREPARED, completed('one')])
+        produce=Mock()
+        result=loop.loop(step,self.folder,max_orders=1,produce=produce,
+                         read_receipt=lambda:{'operation_id':'one','status':'completed'})
+        produce.assert_called_once_with()
+        self.assertEqual(step.call_args_list[1].args,('--prepare-only',))
+        self.assertEqual(result['completed_count'],3)
+
+    def test_failed_production_never_submits_or_counts(self):
+        gap=dict(PREPARED,target_order=dict(missing_items=[{'missing':1}]))
+        step=Mock(return_value=gap)
+        with self.assertRaisesRegex(RuntimeError,'uncertain claim'):
+            loop.loop(step,self.folder,produce=Mock(side_effect=RuntimeError('uncertain claim')))
+        step.assert_called_once_with('--prepare-only')
+        self.assertEqual(json.loads((self.folder/'summary.json').read_text())['completed_count'],0)
+
+    def test_two_waves_require_two_rescans_and_only_final_order_counts(self):
+        gap=dict(PREPARED,target_order=dict(order=1,missing_items=[{'missing':112}]))
+        remainder=dict(PREPARED,target_order=dict(order=1,missing_items=[{'missing':12}]))
+        step=Mock(side_effect=[gap,remainder,PREPARED,completed('one')]);produce=Mock()
+        result=loop.loop(step,self.folder,max_orders=1,produce=produce,
+                         read_receipt=lambda:{'status':'completed','operation_id':'one'})
+        self.assertEqual(produce.call_count,2)
+        self.assertEqual([c.args for c in step.call_args_list[:3]],[('--prepare-only',)]*3)
+        self.assertEqual((result['completed_orders'],result['completed_count']),(1,3))
+
+    def test_loop_end_prints_confirmed_completion_tally(self):
+        buffer = io.StringIO()
+        step = Mock(side_effect=[PREPARED, completed('one')])
+        with patch('sys.stdout', buffer):
+            loop.loop(step, self.folder, max_orders=1,
+                      read_receipt=lambda: {'status': 'completed', 'operation_id': 'one'})
+        self.assertIn('[普通3倍] 本轮完成统计：1单／3次（状态=已完成）', buffer.getvalue())
+
+    def test_completion_line_names_known_stop_reasons(self):
+        self.assertEqual(
+            loop.completion_line(dict(status='waiting_for_materials', completed_orders=0, completed_count=0)),
+            '[普通3倍] 本轮完成统计：0单／0次（状态=等待材料）',
+        )
+
+
+class ProductionResumeTests(unittest.TestCase):
+    def test_saved_assignment_monitors_canonical_file_without_new_save(self):
+        saved=dict(status='saved',assignment_id='one',operation_dir='bound/one')
+        with patch.object(loop.employees,'active',side_effect=[saved,dict(saved,status='collected')]), \
+                patch.object(loop.decoded,'snapshot',return_value={'packageVersion':'98'}), \
+                patch.object(loop.employees,'supersede_cleared_plans',side_effect=loop.decoded.DecodeError('still present')), \
+                patch.object(loop.delivery,'load',return_value=None),patch.object(loop,'run_script') as run:
+            loop.finish_production(20,7200)
+        run.assert_called_once_with('monitor_employee_products.py','--assignment-file',str(Path('bound/one/assignment.json')),
+                                    '--poll-seconds','20','--timeout-seconds','7200','--apply')
+
+    def test_partial_assignment_resumes_before_monitor_and_requires_confirmed_collection(self):
+        applying=dict(status='applying',assignment_id='one',operation_dir='bound/one')
+        saved=dict(applying,status='saved')
+        with patch.object(loop.employees,'active',side_effect=[applying,saved,saved]), \
+                patch.object(loop.delivery,'load',return_value=None),patch.object(loop,'run_script') as run:
+            with self.assertRaisesRegex(loop.decoded.DecodeError,'collection not confirmed'):
+                loop.finish_production(20,7200)
+        self.assertEqual(run.call_args_list[0].args,('run_employee_order_plan.py','--resume','--allow-partial','--apply'))
+        self.assertEqual(run.call_count,2)
+
+    def test_old_completed_assignment_does_not_authorize_monitoring(self):
+        with patch.object(loop.employees,'active',return_value={'status':'collected'}), \
+                patch.object(loop,'run_script') as run:
+            loop.finish_production(20,7200)
+        run.assert_not_called()
+
+
+class LoopEntryGuardTests(unittest.TestCase):
+    def test_unknown_version_stops_before_production_policy_or_game_inputs(self):
+        output = io.StringIO()
+        with tempfile.TemporaryDirectory() as folder, \
+                patch.object(loop,'ROOT',Path(folder)),patch('sys.argv',['loop','--apply']), \
+                patch.dict('os.environ',{'CARROT_STATE_READER':'decoded'}), \
+                patch.object(loop,'cycle_lock',return_value=nullcontext()), \
+                patch.object(loop.decoded,'snapshot',return_value={'packageVersion':'999'}), \
+                patch.object(loop,'finish_production') as production,patch.object(loop,'run_script') as run, \
+                patch('sys.stdout', output):
+            with self.assertRaisesRegex(loop.decoded.DecodeError,'999.*unverified'):
+                loop.main()
+            production.assert_not_called();run.assert_not_called()
+            state=json.loads(next(Path(folder).rglob('summary.json')).read_text())
+            self.assertEqual(state['status'],'failed')
+            self.assertIn('[普通3倍] 本轮完成统计：0单／0次（状态=失败）', output.getvalue())
+
+    def test_lock_conflict_keeps_original_error_and_failure_report(self):
+        with tempfile.TemporaryDirectory() as folder, \
+                patch.object(loop,'ROOT',Path(folder)),patch('sys.argv',['loop','--apply']), \
+                patch.dict('os.environ',{'CARROT_STATE_READER':'decoded'}), \
+                patch.object(loop,'cycle_lock',side_effect=RuntimeError('another UI cycle')), \
+                patch.object(loop.decoded,'snapshot') as read:
+            with self.assertRaisesRegex(RuntimeError,'another UI cycle'):
+                loop.main()
+            read.assert_not_called()
+            state=json.loads(next(Path(folder).rglob('summary.json')).read_text())
+            self.assertIn('another UI cycle',state['error'])
+
+    def test_pending_delivery_conflict_blocks_employee_inputs(self):
+        with patch.object(loop.employees,'active',return_value={'status':'applying'}), \
+                patch.object(loop.delivery,'load',return_value={'status':'accepted'}),patch.object(loop,'run_script') as run:
+            with self.assertRaisesRegex(loop.decoded.DecodeError,'conflict'):
+                loop.finish_production(20,7200)
+        run.assert_not_called()
 
 
 if __name__=='__main__':unittest.main()

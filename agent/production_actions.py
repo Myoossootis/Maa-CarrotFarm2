@@ -204,10 +204,16 @@ class RunDailyOrders(CustomAction):
     def run(self, context, argv) -> bool:
         parameters = json.loads(argv.custom_action_param or "{}")
         order_type = parameters.get("order_type") or "normal"
+        continuous = parameters.get('continuous', False)
+        maximum = parameters.get('max_orders', 0)
         poll = parameters.get("poll_seconds", 20)
         timeout = parameters.get("timeout_seconds", 900)
         node = context.get_node_data(argv.node_name) or {}
         apply = node.get("attach", {}).get("ui_apply", True)
+        if (type(continuous) is not bool or type(maximum) is not int or not 0 <= maximum <= 999
+                or continuous and order_type != 'normal'):
+            print('[错误] 持续循环仅支持普通单，轮数须为0..999。', flush=True)
+            return False
         try:
             allowed_products = allowed_products_from_node(node)
         except ValueError as error:
@@ -238,10 +244,10 @@ class RunDailyOrders(CustomAction):
             print("[停止] 任务在启动前被取消。", flush=True)
             return False
         # No MessageBox here: old dialog was not topmost and hung Maa logs silently.
-        if apply:
+        if apply and not continuous:
             print(
                 "[日常] 跳过清地弹窗，直接开跑（请事先清残留作物/旧计划）。"
-                "监控预览：左上角；帧目录 .tmp/maa_monitor",
+                "监控预览随当前布局；帧目录 .tmp/maa_monitor",
                 flush=True,
             )
         if apply and not wait_for_background_ready(is_stopping=stopping):
@@ -258,21 +264,50 @@ class RunDailyOrders(CustomAction):
         if order_type == "batch":
             arguments = ["--order-types", "party", "takeout", "--poll-seconds", str(poll),
                          "--timeout-seconds", str(timeout)]
+        script = 'run_daily_orders.py'
+        if continuous:
+            script = 'run_normal_order_loop.py'
+            arguments = ['--max-orders', str(maximum), '--poll-seconds', str(poll),
+                         '--timeout-seconds', str(timeout)]
         arguments.extend(['--allowed-products', *sorted(allowed_products)])
         print(f'[一号位] 本次勾选允许品类：{"、".join(sorted(allowed_products))}', flush=True)
         if apply:
             arguments.append("--apply")
         print(
-            f"[日常] 启动子进程 run_daily_orders.py type={order_type} apply={apply}",
+            f"[日常] 启动子进程 {script} type={order_type} apply={apply}",
             flush=True,
         )
         labels = {"party": "聚会订单", "takeout": "外卖订单", "normal": "普通订单",
                   "聚会": "聚会订单", "外卖": "外卖订单", "普通": "普通订单",
                   "batch": "聚会与外卖自动调度"}
         label = labels.get(str(order_type), str(order_type))
+        if continuous:
+            label = '普通订单3倍持续循环'
+            print(f'[普通3倍] 本次完成上限={maximum or "持续"}单；缺料优先员工补产，停止保留已保存进度。', flush=True)
         print(
             f"[日常] 启动 {label}（type={order_type} apply={apply}）；"
-            f"日志将打印订单信息与员工安排。聚会/外卖自动切页签并走批量完成6次。",
+            + ("日志将打印补产、收取与3倍交付结果。" if continuous else
+               "日志将打印订单信息与员工安排。聚会/外卖自动切页签并走批量完成6次。"),
             flush=True,
         )
-        return run_cycle_worker(arguments, is_stopping=stopping, script="run_daily_orders.py")
+        ui_log_failed = False
+
+        def publish(line):
+            nonlocal ui_log_failed
+            if ui_log_failed:
+                return
+            detail = context.run_task('UiProgressLog', {
+                'UiProgressLog': {
+                    'focus': {
+                        'Node.Recognition.Succeeded': {
+                            'content': line[:800],
+                            'display': ['log'],
+                        }
+                    }
+                }
+            })
+            if detail is None:
+                ui_log_failed = True
+                print('[日志] 界面进度日志节点没有执行，后续只写入工作进程日志。', flush=True)
+
+        return run_cycle_worker(arguments, is_stopping=stopping, script=script, publish=publish)

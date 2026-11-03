@@ -1,8 +1,10 @@
 'use strict';
 
-// CROP_IDX and ViewFarmModel verified byte-for-byte in packages 87 and 90.
+// CROP_IDX / ViewFarmModel timing verified for 87 and 90 byte-for-byte.
+// Package 98 keeps the same ViewFarmModel timing bodies; only minifier aliases
+// for farmland lock/unlock property slots differ. Evidence: .tmp/production98/.
 // This module consumes decoded records only; it has no process, UI or network API.
-const VERIFIED_PACKAGES=new Set(['87','90']);
+const VERIFIED_PACKAGES=new Set(['87','90','98']);
 const BUILDINGS=new Map([[12,'field'],[284,'field'],[285,'field'],[17,'ranch'],[723,'ranch'],[28,'orchard'],[286,'orchard']]);
 const LABELS={empty:'空位',growing:'生长中',mature:'已成熟',needs_feed:'待喂食',unknown:'未判定'};
 const paramsOf=value=>Object.fromEntries(String(value||'').split(';').filter(Boolean).map(v=>{const i=v.indexOf(',');return [v.slice(0,i),v.slice(i+1)];}));
@@ -34,7 +36,7 @@ function decodeSlot(raw,chargeCds,config,now,index){
   slot.isMutation=Number(itemParams.mutation_ref_id)>0;
   slot.baseDurationSeconds=output.cd;
   slot.effectiveDurationSeconds=output.cd-Math.floor(output.cd*(slot.cdRatePercent/100));
-  if(!VERIFIED_PACKAGES.has(String(config.version))) return unknown('客户端版本未核对；当前已核对87、90版规则');
+  if(!VERIFIED_PACKAGES.has(String(config.version))) return unknown('客户端版本未核对；当前已核对87、90、98版规则');
   if(slot.cdRatePercent>100) return unknown('减时百分比超出已核对范围');
   if(chargeCds!==null&&(!Array.isArray(chargeCds)||!chargeCds.length||!valid(chargeCds)))
     return unknown('无效的供料计时数组');

@@ -1,11 +1,11 @@
 {
     "interface_version": 2,
     "name": "萝卜家园2",
-    "description": "胡萝卜庄园2 后台自动化。勾选日常：聚会/外卖/普通订单；另有导航原子与单订单短循环。批次与冷却内置，不在界面展示。",
+    "description": "胡萝卜庄园2 后台自动化。勾选日常：聚会/外卖/普通订单；另有导航原子与单订单短循环。操作台只读查看监控和模板。批次与冷却内置，不在界面展示。",
     "license": "MIT",
-    "welcome": "默认运行「聚会与外卖订单（自动调度）」：先做可用批次，两类都冷却时才等待，各日12次。也可单独勾选聚会或外卖，冷却时让出队列。普通订单没有每日上限，当前单独入口每次处理一单，长期循环待后续开发。游戏勿最小化。监控预览：左上角。",
+    "welcome": "默认运行「聚会与外卖订单（自动调度）」：先做可用批次，两类都冷却时才等待，各日12次。也可单独勾选聚会或外卖，冷却时让出队列。普通订单没有每日上限。「普通订单3倍持续循环」缺料时优先员工补产，确认收取、交单和领奖后继续；轮数0表示持续，点击停止保留进度。原普通订单入口仍为单轮。游戏勿最小化。任务列表在左，监控在右；已经拖好的布局会保留。只读操作台在任务「操作台」。",
     "github": "https://github.com/Myoossootis/Maa-CarrotFarm2",
-    "version": "0.8.1",
+    "version": "0.11.8",
     "agent": {
         "child_exec": "python",
         "child_args": [
@@ -36,6 +36,12 @@
         }
     ],
     "task": [
+        {
+            "name": "操作台",
+            "entry": "OpenFarmHud",
+            "default_check": false,
+            "description": "打开左侧导航的监控、订单生产和自动运行模板。只读查看，不点击游戏；真正开始仍用下面的任务。"
+        },
         {
             "name": "手动种植（单次）",
             "entry": "ManualPlantingOnce",
@@ -102,12 +108,25 @@
             "name": "普通订单",
             "entry": "RunDailyNormalOrders",
             "default_check": false,
-            "description": "启动先检查一号位：含未勾选品类或菜品等级太低时，更换并免费加速至合规。普通订单没有每日限额。当前入口每次处理一单；长期循环待后续开发。",
+            "description": "启动先检查一号位：含未勾选品类或菜品等级太低时，更换并免费加速至合规。普通订单没有每日限额。当前入口每次处理一单；持续运行请选「普通订单3倍持续循环」。",
             "controller": [
                 "萝卜家园2（Win32）"
             ],
             "option": [
                 "一号位允许品类"
+            ]
+        },
+        {
+            "name": "普通订单3倍持续循环",
+            "entry": "RunNormalOrderLoop",
+            "default_check": false,
+            "description": "每单完成3次并确认领奖后继续。缺料优先安排空闲员工，保留已有计划；支持恢复本次已保存计划与收取进度。0单持续，正数完成指定单数后停止。未知状态或结果不明时停止并保留记录。",
+            "controller": [
+                "萝卜家园2（Win32）"
+            ],
+            "option": [
+                "一号位允许品类",
+                "普通循环设置"
             ]
         },
         {
@@ -774,6 +793,11 @@
                             "attach": {
                                 "first_order_allow_crop_012": true
                             }
+                        },
+                        "RunNormalOrderLoop": {
+                            "attach": {
+                                "first_order_allow_crop_012": true
+                            }
                         }
                     }
                 },
@@ -797,6 +821,11 @@
                             }
                         },
                         "RunDailyNormalOrders": {
+                            "attach": {
+                                "first_order_allow_crop_005": true
+                            }
+                        },
+                        "RunNormalOrderLoop": {
                             "attach": {
                                 "first_order_allow_crop_005": true
                             }
@@ -826,6 +855,11 @@
                             "attach": {
                                 "first_order_allow_crop_023": true
                             }
+                        },
+                        "RunNormalOrderLoop": {
+                            "attach": {
+                                "first_order_allow_crop_023": true
+                            }
                         }
                     }
                 },
@@ -849,6 +883,11 @@
                             }
                         },
                         "RunDailyNormalOrders": {
+                            "attach": {
+                                "first_order_allow_crop_007": true
+                            }
+                        },
+                        "RunNormalOrderLoop": {
                             "attach": {
                                 "first_order_allow_crop_007": true
                             }
@@ -878,6 +917,11 @@
                             "attach": {
                                 "first_order_allow_crop_022": true
                             }
+                        },
+                        "RunNormalOrderLoop": {
+                            "attach": {
+                                "first_order_allow_crop_022": true
+                            }
                         }
                     }
                 },
@@ -901,6 +945,11 @@
                             }
                         },
                         "RunDailyNormalOrders": {
+                            "attach": {
+                                "first_order_allow_crop_008": true
+                            }
+                        },
+                        "RunNormalOrderLoop": {
                             "attach": {
                                 "first_order_allow_crop_008": true
                             }
@@ -930,6 +979,11 @@
                             "attach": {
                                 "first_order_allow_crop_009": true
                             }
+                        },
+                        "RunNormalOrderLoop": {
+                            "attach": {
+                                "first_order_allow_crop_009": true
+                            }
                         }
                     }
                 },
@@ -953,6 +1007,11 @@
                             }
                         },
                         "RunDailyNormalOrders": {
+                            "attach": {
+                                "first_order_allow_crop_016": true
+                            }
+                        },
+                        "RunNormalOrderLoop": {
                             "attach": {
                                 "first_order_allow_crop_016": true
                             }
@@ -982,6 +1041,11 @@
                             "attach": {
                                 "first_order_allow_crop_017": true
                             }
+                        },
+                        "RunNormalOrderLoop": {
+                            "attach": {
+                                "first_order_allow_crop_017": true
+                            }
                         }
                     }
                 },
@@ -1005,6 +1069,11 @@
                             }
                         },
                         "RunDailyNormalOrders": {
+                            "attach": {
+                                "first_order_allow_crop_001": true
+                            }
+                        },
+                        "RunNormalOrderLoop": {
                             "attach": {
                                 "first_order_allow_crop_001": true
                             }
@@ -1034,6 +1103,11 @@
                             "attach": {
                                 "first_order_allow_crop_002": true
                             }
+                        },
+                        "RunNormalOrderLoop": {
+                            "attach": {
+                                "first_order_allow_crop_002": true
+                            }
                         }
                     }
                 },
@@ -1057,6 +1131,11 @@
                             }
                         },
                         "RunDailyNormalOrders": {
+                            "attach": {
+                                "first_order_allow_crop_003": true
+                            }
+                        },
+                        "RunNormalOrderLoop": {
                             "attach": {
                                 "first_order_allow_crop_003": true
                             }
@@ -1086,6 +1165,11 @@
                             "attach": {
                                 "first_order_allow_crop_004": true
                             }
+                        },
+                        "RunNormalOrderLoop": {
+                            "attach": {
+                                "first_order_allow_crop_004": true
+                            }
                         }
                     }
                 },
@@ -1109,6 +1193,11 @@
                             }
                         },
                         "RunDailyNormalOrders": {
+                            "attach": {
+                                "first_order_allow_crop_006": true
+                            }
+                        },
+                        "RunNormalOrderLoop": {
                             "attach": {
                                 "first_order_allow_crop_006": true
                             }
@@ -1138,6 +1227,11 @@
                             "attach": {
                                 "first_order_allow_crop_010": true
                             }
+                        },
+                        "RunNormalOrderLoop": {
+                            "attach": {
+                                "first_order_allow_crop_010": true
+                            }
                         }
                     }
                 },
@@ -1161,6 +1255,11 @@
                             }
                         },
                         "RunDailyNormalOrders": {
+                            "attach": {
+                                "first_order_allow_crop_011": true
+                            }
+                        },
+                        "RunNormalOrderLoop": {
                             "attach": {
                                 "first_order_allow_crop_011": true
                             }
@@ -1190,6 +1289,11 @@
                             "attach": {
                                 "first_order_allow_crop_013": true
                             }
+                        },
+                        "RunNormalOrderLoop": {
+                            "attach": {
+                                "first_order_allow_crop_013": true
+                            }
                         }
                     }
                 },
@@ -1213,6 +1317,11 @@
                             }
                         },
                         "RunDailyNormalOrders": {
+                            "attach": {
+                                "first_order_allow_crop_014": true
+                            }
+                        },
+                        "RunNormalOrderLoop": {
                             "attach": {
                                 "first_order_allow_crop_014": true
                             }
@@ -1242,6 +1351,11 @@
                             "attach": {
                                 "first_order_allow_crop_015": true
                             }
+                        },
+                        "RunNormalOrderLoop": {
+                            "attach": {
+                                "first_order_allow_crop_015": true
+                            }
                         }
                     }
                 },
@@ -1265,6 +1379,11 @@
                             }
                         },
                         "RunDailyNormalOrders": {
+                            "attach": {
+                                "first_order_allow_crop_018": true
+                            }
+                        },
+                        "RunNormalOrderLoop": {
                             "attach": {
                                 "first_order_allow_crop_018": true
                             }
@@ -1294,6 +1413,11 @@
                             "attach": {
                                 "first_order_allow_crop_019": true
                             }
+                        },
+                        "RunNormalOrderLoop": {
+                            "attach": {
+                                "first_order_allow_crop_019": true
+                            }
                         }
                     }
                 },
@@ -1317,6 +1441,11 @@
                             }
                         },
                         "RunDailyNormalOrders": {
+                            "attach": {
+                                "first_order_allow_crop_020": true
+                            }
+                        },
+                        "RunNormalOrderLoop": {
                             "attach": {
                                 "first_order_allow_crop_020": true
                             }
@@ -1346,6 +1475,11 @@
                             "attach": {
                                 "first_order_allow_crop_021": true
                             }
+                        },
+                        "RunNormalOrderLoop": {
+                            "attach": {
+                                "first_order_allow_crop_021": true
+                            }
                         }
                     }
                 },
@@ -1369,6 +1503,11 @@
                             }
                         },
                         "RunDailyNormalOrders": {
+                            "attach": {
+                                "first_order_allow_crop_024": true
+                            }
+                        },
+                        "RunNormalOrderLoop": {
                             "attach": {
                                 "first_order_allow_crop_024": true
                             }
@@ -1400,6 +1539,29 @@
                     "custom_action_param": {
                         "max_feed": "{maximum}",
                         "poll_seconds": "{interval}"
+                    }
+                }
+            }
+        },
+        "普通循环设置": {
+            "type": "input",
+            "inputs": [
+                {
+                    "name": "maximum",
+                    "label": "完成订单数（0=持续，1–999=有限单数；每单3次）",
+                    "default": "0",
+                    "pipeline_type": "int",
+                    "verify": "^(?:0|[1-9][0-9]{0,2})$"
+                }
+            ],
+            "pipeline_override": {
+                "RunNormalOrderLoop": {
+                    "custom_action_param": {
+                        "max_orders": "{maximum}",
+                        "order_type": "normal",
+                        "continuous": true,
+                        "poll_seconds": 20,
+                        "timeout_seconds": 7200
                     }
                 }
             }

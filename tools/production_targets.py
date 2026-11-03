@@ -174,9 +174,15 @@ def prepare_order_target(entries: list[dict]) -> dict | None:
                 raise RuntimeError(f"invalid inventory for {item['name']}")
             item['missing'] = max(int(item['required']) - int(item['actual']), 0)
         missing = [item for item in normalized if item['missing'] > 0]
-        return dict(order=number, items=normalized, missing_items=missing,
-                    total_missing=sum(item['missing'] for item in missing),
-                    selection='first_non_fish_of_first_three', production_targets=build_targets(missing))
+        result = dict(order=number, items=normalized, missing_items=missing,
+                      total_missing=sum(item['missing'] for item in missing),
+                      selection='first_non_fish_of_first_three', production_targets=build_targets(missing))
+        if all(item.get('data_source') == 'decoded' for item in items):
+            uids = {item['game_order_uid'] for item in items}
+            if len(uids) != 1 or any(item.get('batch_count') != 3 for item in items):
+                raise RuntimeError('Prepared normal target has conflicting identity or multiplier')
+            result.update(game_order_uid=next(iter(uids)), batch_count=3, data_source='decoded')
+        return result
     return None
 
 

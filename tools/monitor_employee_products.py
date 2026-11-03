@@ -19,8 +19,10 @@ from maa.tasker import Tasker
 
 try:
     from . import decoded_runtime as decoded
+    from . import employee_operation as operations
 except ImportError:
     import decoded_runtime as decoded
+    import employee_operation as operations
 
 try:
     from .runtime_state import write_json
@@ -46,6 +48,67 @@ CROP_MONITOR_TIMEOUT_HINTS = {
     "玫瑰": 3600,
     "甘蔗": 3600,
 }
+
+
+def format_order_need(allocation):
+    """One line: which order, each item's need / stock / gap."""
+    items = (allocation or {}).get('target_items') or []
+    order = (allocation or {}).get('target_order')
+    if not items:
+        return f'[订单] 订单{order} 没有需求明细'
+    parts = [
+        f"{row.get('name')} 需{row.get('required')} 有{row.get('actual')} 缺{row.get('missing')}"
+        for row in items
+    ]
+    return f"[订单] 订单{order}：" + '；'.join(parts)
+
+
+def current_cycle_remaining(slot_id, data):
+    """Longest reliable timer on slots already growing. None when unread."""
+    if not data:
+        return None
+    try:
+        entry = decoded.plan(slot_id, data)
+    except decoded.DecodeError:
+        return {'state': 'unread'}
+    areas = [area for area in (data.get('production') or {}).get('buildings') or []
+             if area.get('buildingUid') == entry.get('buildingUid')]
+    if len(areas) != 1:
+        return {'state': 'unread'}
+    growing = 0
+    seconds = []
+    for slot in areas[0].get('slots') or []:
+        if slot.get('status') not in ('growing', 'needs_feed', 'mature'):
+            continue
+        growing += 1
+        remaining = slot.get('remainingSeconds')
+        if slot.get('timingReliable') is True and type(remaining) is int and remaining >= 0:
+            seconds.append(remaining)
+    if not growing:
+        return {'state': 'not_started'}
+    if not seconds:
+        return {'state': 'unknown', 'growing': growing}
+    return {'state': 'timed', 'seconds': max(seconds), 'growing': growing}
+
+
+def format_cycle_time(info):
+    if not info or info.get('state') != 'timed':
+        return '剩余时间未判定'
+    seconds = info['seconds']
+    if seconds <= 0:
+        return '这轮已到时'
+    return f"这轮剩余约{(seconds + 59) // 60}分钟"
+
+
+def format_watch_line(slot_id, items, progress, cycle):
+    label = SLOTS.get(slot_id, {}).get('label', slot_id)
+    plan = '、'.join(f'{name}×{qty}' for name, qty in (items or {}).items()) or '空'
+    if progress:
+        done, total = progress
+        count = f'{done}/{total} 还差{max(0, total - done)}'
+    else:
+        count = '进度未知'
+    return f'[进度] {label} {plan} {count}；{format_cycle_time(cycle)}'
 
 
 def suggested_timeout_seconds(
@@ -81,7 +144,7 @@ def _close_employee_menu_with_retry(controller) -> None:
     enter_farm(controller)
 
 
-def monitor(plans: dict[str, int], poll_seconds: int, timeout_seconds: int, expected_items: dict | None = None) -> dict:
+def monitor(plans: dict[str, int], poll_seconds: int, timeout_seconds: int, expected_items: dict | None = None, operation=None) -> dict:
     controller = Win32Controller(
         hWnd=find_window(),
         screencap_method=MaaWin32ScreencapMethodEnum.FramePool,
@@ -101,6 +164,7 @@ def monitor(plans: dict[str, int], poll_seconds: int, timeout_seconds: int, expe
     def checkpoint(status):
         RESULT.parent.mkdir(parents=True, exist_ok=True)
         write_json(RESULT, {"status": status, "plans": plans, "collected_at_utc": collected,
+            "assignment_id": operation['assignment_id'] if operation else None,
             "reset_slots": reset_slots, "cleared_slots": cleared_slots, "observations": observations,
             "pending": [slot for slot in plans if slot not in collected],
             "elapsed_seconds": round(time.monotonic() - started, 1)})
@@ -116,15 +180,30 @@ def monitor(plans: dict[str, int], poll_seconds: int, timeout_seconds: int, expe
         if not tasker.bind(resource, controller):
             raise RuntimeError("Maa tasker binding failed")
         checkpoint("monitoring")
+        reported = {}
+        if operation:
+            print(format_order_need(operation.get('allocation')), flush=True)
         while len(collected) < len(plans):
             if time.monotonic() - started > timeout_seconds:
                 break
             for slot_id, required in plans.items():
                 if slot_id in collected:
                     continue
+                data = None
                 try:
                     if decoded.enabled() and expected_items is not None:
                         data = decoded.snapshot()
+                        pending_claim = operations.collection_record(operation, slot_id) if operation else None
+                        if operation:
+                            operations.verify_owner(operation, slot_id, data)
+                        if pending_claim and pending_claim['status'] in ('intent', 'unconfirmed', 'confirmed'):
+                            result = operations.collect(operation, slot_id, decoded.snapshot,
+                                lambda *args: (_ for _ in ()).throw(decoded.DecodeError('Recovery cannot send new collection input')))
+                            collected[slot_id] = datetime.now(timezone.utc).isoformat()
+                            cleared_slots.append(slot_id)
+                            observations[slot_id] = result
+                            checkpoint('monitoring')
+                            continue
                         if decoded.plan_items(slot_id, data) != expected_items[slot_id]:
                             raise decoded.DecodeError(f'{slot_id}: decoded plan identity differs from the saved assignment; no collection click')
                         progress = decoded.progress(slot_id, required, data)
@@ -135,9 +214,13 @@ def monitor(plans: dict[str, int], poll_seconds: int, timeout_seconds: int, expe
                         # pauses production and can leave it scrolling at claim time.
                         result = dict(collected=False, progress=progress, reason='decoded_not_finished')
                     else:
-                        result = collect_finished_slot(
-                            controller, slot_id, tasker, required_progress=required
-                        )
+                        if operation:
+                            def claim(candidate, reserve, evidence):
+                                return collect_finished_slot(controller, slot_id, tasker,
+                                    required_progress=required, before_click=reserve)
+                            result = operations.collect(operation, slot_id, decoded.snapshot, claim)
+                        else:
+                            result = collect_finished_slot(controller, slot_id, tasker, required_progress=required)
                 except CollectionUnconfirmedError:
                     # Harvest may already have cleared a one-shot plan. Do not
                     # retry an input whose outcome is unknown.
@@ -153,21 +236,17 @@ def monitor(plans: dict[str, int], poll_seconds: int, timeout_seconds: int, expe
                 errors[slot_id] = 0
                 observations[slot_id] = result
                 progress = result.get("progress")
-                if progress is not None:
-                    print(
-                        f"{slot_id}: progress {progress[0]}/{progress[1]} collected={result['collected']}",
-                        flush=True,
-                    )
-                else:
-                    print(
-                        f"{slot_id}: progress unknown collected={result['collected']} reason={result.get('reason')}",
-                        flush=True,
-                    )
+                cycle = current_cycle_remaining(slot_id, data) if data else None
+                label = SLOTS.get(slot_id, {}).get('label', slot_id)
+                line = (f'[进度] {label} 已收取' if result.get('collected') else
+                        format_watch_line(slot_id, (expected_items or {}).get(slot_id), progress, cycle))
+                if reported.get(slot_id) != line:
+                    reported[slot_id] = line
+                    print(line, flush=True)
                 checkpoint("monitoring")
                 if result["collected"]:
                     collected[slot_id] = datetime.now(timezone.utc).isoformat()
                     checkpoint("collected")
-                    print(f"{slot_id}: collected", flush=True)
                     # Decoded mode already confirmed both clearance and inventory.
                     # Never open/reset a plan after harvesting.
                     cleared_slots.append(slot_id)
@@ -181,6 +260,8 @@ def monitor(plans: dict[str, int], poll_seconds: int, timeout_seconds: int, expe
         # Leave the list closed on completion as well; this keeps the next
         # order scan on the farm map and avoids a redundant UI action.
         _close_employee_menu_with_retry(controller)
+        if operation and len(collected) == len(plans):
+            operations.mark(operation, 'collected')
         checkpoint("complete" if len(collected) == len(plans) else "timed_out")
         return {
             "complete": len(collected) == len(plans),
@@ -227,6 +308,7 @@ def main() -> int:
     args = parser.parse_args()
     plans: dict[str, int] = {}
     expected_items = None
+    operation = None
     if args.assignment_file:
         assignment = json.loads(args.assignment_file.read_text(encoding="utf-8"))
         if assignment.get("status") != "saved" or not assignment.get("saved") or not all(job.get("verified") for job in assignment["saved"]):
@@ -234,6 +316,12 @@ def main() -> int:
         if any(job.get("repeat") is not False or job.get("one_shot") is not True for job in assignment["saved"]):
             parser.error("assignment must explicitly contain one-shot plans (repeat=false, one_shot=true)")
         expected_items = {job["slot_id"]: job["items"] for job in assignment["saved"]}
+        if decoded.enabled():
+            operation = operations.active()
+            if (not operation or assignment.get('assignment_id') != operation['assignment_id']
+                    or assignment.get('operation_dir') != operation['operation_dir']
+                    or expected_items != {job['slot_id']: job['items'] for job in operation.get('saved', [])}):
+                parser.error('Decoded monitoring requires the active bound employee assignment')
         entries = [f"{slot}={sum(items.values())}" for slot, items in expected_items.items()]
     else:
         entries = args.plans
@@ -259,12 +347,14 @@ def main() -> int:
     if not args.apply:
         print(f"dry run: monitor {plans}; add --apply to collect finished supplies")
         return 0
+    if decoded.enabled() and operation is None:
+        parser.error('Decoded collection requires --assignment-file with bound operation identity')
     timeout_seconds = args.timeout_seconds
     if expected_items and hint > timeout_seconds:
         # Auto-raise only when assignment carries known-slow crops.
         timeout_seconds = hint
         print(f"using raised timeout_seconds={timeout_seconds}", flush=True)
-    result = monitor(plans, args.poll_seconds, timeout_seconds, expected_items)
+    result = monitor(plans, args.poll_seconds, timeout_seconds, expected_items, operation)
     print(json.dumps(result, ensure_ascii=False, indent=2), flush=True)
     return 0 if result["complete"] else 2
 

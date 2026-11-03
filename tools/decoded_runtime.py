@@ -3,11 +3,14 @@ from __future__ import annotations
 
 from contextvars import ContextVar
 from datetime import datetime, timezone
+import atexit
 import json
 import os
 from pathlib import Path
+import queue
 import subprocess
 import sys
+import threading
 import time
 
 try:
@@ -20,6 +23,9 @@ sys.modules.setdefault('decoded_runtime', sys.modules[__name__])
 sys.modules.setdefault('tools.decoded_runtime', sys.modules[__name__])
 ROOT = Path(__file__).resolve().parents[1]
 _selection = ContextVar('decoded_order_selection', default=None)
+
+# Ordinary-order / employee-plan path. Party/takeout capacity stays on 90 until rechecked.
+VERIFIED_NORMAL_PACKAGES = frozenset({'90', '98'})
 
 
 class DecodeError(RuntimeError):
@@ -37,19 +43,112 @@ def enabled():
     return mode == 'decoded'
 
 
-def snapshot():
-    """Fresh single storage snapshot; excludes the unrelated family heap scan."""
+def require_normal_package(data):
+    version = data.get('packageVersion')
+    if version not in VERIFIED_NORMAL_PACKAGES:
+        raise DecodeError(f'Normal-order package {version!r} is unverified; no UI input')
+    return version
+
+
+class DecoderSession:
+    """One Node process. The key and game config stay in that process.
+
+    Each request reads the MMKV file again. A response never reuses the
+    previous bag, and the key is not returned to Python.
+    """
+
+    def __init__(self):
+        self.proc = subprocess.Popen(
+            ['node', str(ROOT / 'tools/read_only_game_state.cjs'), 'serve', '--python', sys.executable],
+            cwd=ROOT, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
+            text=True, encoding='utf-8',
+            creationflags=getattr(subprocess, 'CREATE_NO_WINDOW', 0))
+        self.seq = 0
+
+    def request(self, mode, timeout=30):
+        if self.proc.poll() is not None:
+            raise DecodeError('解码进程已退出，未使用上一份背包')
+        self.seq += 1
+        ident = self.seq
+        assert self.proc.stdin is not None and self.proc.stdout is not None
+        self.proc.stdin.write(json.dumps({'id': ident, 'mode': mode}) + '\n')
+        self.proc.stdin.flush()
+        line = _read_line(self.proc.stdout, timeout)
+        if line is None:
+            self.close()
+            raise DecodeError('解码读取超时，未使用上一份背包')
+        if not line:
+            self.close()
+            raise DecodeError('解码进程没有返回，未使用上一份背包')
+        payload = json.loads(line)
+        if payload.get('id') != ident or payload.get('ok') is not True:
+            raise DecodeError('解码读取失败，未退回识图：' + str(payload.get('error') or 'empty report'))
+        report = payload.get('report')
+        if not isinstance(report, dict) or 'key' in report:
+            raise DecodeError('解码结果无效，未使用上一份背包')
+        return report
+
+    def close(self):
+        if self.proc.poll() is None:
+            self.proc.kill()
+            self.proc.wait(timeout=5)
+
+
+def _read_line(pipe, timeout):
+    box = queue.Queue(maxsize=1)
+    threading.Thread(target=lambda: box.put(pipe.readline()), daemon=True).start()
     try:
-        result = subprocess.run(['node', str(ROOT / 'tools/read_only_game_state.cjs'), 'automation',
-                                 '--python', sys.executable], cwd=ROOT, capture_output=True,
-                                text=True, encoding='utf-8', timeout=30,
-                                creationflags=getattr(subprocess, 'CREATE_NO_WINDOW', 0))
-        if result.returncode:
-            raise DecodeError('解码读取失败，未退回识图：' + result.stderr.strip())
-        data = json.loads(result.stdout)
+        return box.get(timeout=timeout)
+    except queue.Empty:
+        return None
+
+
+_session = None
+_session_lock = threading.Lock()
+
+
+def _close_session():
+    global _session
+    with _session_lock:
+        if _session is not None:
+            _session.close()
+            _session = None
+
+
+atexit.register(_close_session)
+
+
+def _request_report(mode='automation'):
+    """Ask the resident decoder for one fresh report."""
+    global _session
+    with _session_lock:
+        if _session is None or _session.proc.poll() is not None:
+            _session = DecoderSession()
+        try:
+            return _session.request(mode)
+        except DecodeError:
+            raise
+        except (OSError, ValueError) as error:
+            _close_unlocked()
+            raise DecodeError('解码快照不可用：' + str(error)) from error
+
+
+def _close_unlocked():
+    global _session
+    if _session is not None:
+        _session.close()
+        _session = None
+
+
+def snapshot():
+    """Fresh storage snapshot. Excludes the unrelated family heap scan."""
+    try:
+        data = _request_report('automation')
         validate(data)
         return data
-    except (OSError, ValueError, KeyError, subprocess.TimeoutExpired) as error:
+    except DecodeError:
+        raise
+    except (OSError, ValueError, KeyError) as error:
         raise DecodeError('解码快照不可用：' + str(error)) from error
 
 

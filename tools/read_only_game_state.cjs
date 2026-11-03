@@ -1,5 +1,5 @@
 'use strict';
-const fs=require('node:fs'), path=require('node:path'), crypto=require('node:crypto'), cp=require('node:child_process');
+const fs=require('node:fs'), path=require('node:path'), crypto=require('node:crypto'), cp=require('node:child_process'), readline=require('node:readline');
 const {performance}=require('node:perf_hooks');
 const {productionOf}=require('./read_only_production.cjs');
 function readv(buf,p){var v=0,n=0,x;do{if(p>=buf.length||n>49)throw Error('varint');x=buf[p++];v+=(x&127)*2**n;n+=7;}while(x&128);return [v,p];}
@@ -10,7 +10,7 @@ function extraOf(s){return Object.fromEntries(String(s||'').split(';').filter(Bo
 
 const ROOT=path.resolve(__dirname,'..');
 const APP='wx2d7c1a53c1bd45e1';
-const MODES=['inventory','orders','employees','production','automation','family','all'];
+const MODES=['inventory','orders','employees','production','automation','family','all','serve'];
 const PRODUCT_TYPES=new Set([7,11,23,94]);
 
 function argumentsOf(argv){
@@ -76,7 +76,7 @@ function recoverStorage(options,snapshot,processes,hints){
       const candidate=bridge(options,{op:'keys',pid:hints.key.pid,addresses:[hints.key.address]})[0];
       let key=Buffer.from(candidate.key,'hex');
       if(hints.key.swap) key=Buffer.from(key).swap32();
-      return {state:decryptStorage(snapshot,key),hintUsed:true};
+      return {state:decryptStorage(snapshot,key),hintUsed:true,key};
     }catch{/* A moving/restarted runtime invalidates the hint; scan again. */}
   }
   for(const process of mains){
@@ -87,7 +87,7 @@ function recoverStorage(options,snapshot,processes,hints){
           if(swap) key=Buffer.from(key).swap32();
           const state=decryptStorage(snapshot,key);
           hints.key={pid:process.pid,born:process.born,address:candidate.address,swap};
-          return {state,hintUsed:false};
+          return {state,hintUsed:false,key};
         }catch{/* Candidate must decrypt and validate this exact MMKV snapshot. */}
       }
     }
@@ -325,16 +325,8 @@ function familyOf(options,processes,hints,bag,config,now){
   throw incomplete||Error('No readable family board in running WeChatAppEx; open the shared task board first.');
 }
 
-function main(){
-  const started=performance.now(),options=argumentsOf(process.argv.slice(2)),timings={};
-  function stage(name,fn){const start=performance.now();const value=fn();timings[name]=+(performance.now()-start).toFixed(2);return value;}
-  const applet=findApplet(options.applet),hintFile=path.join(ROOT,'.tmp','read_only_decoder','hints.json');
-  let hints={};try{hints=JSON.parse(fs.readFileSync(hintFile));}catch{}
-  if(hints.applet!==applet) hints={applet};
-  const processes=stage('processDiscoveryMs',()=>bridge(options,{op:'processes'}));
-  const snapshot=stage('storageSnapshotMs',()=>storageSnapshot(applet));
-  const {state,hintUsed}=stage('keyAndStorageDecodeMs',()=>recoverStorage(options,snapshot,processes,hints));
-  const config=stage('configurationMs',()=>configuration(applet));
+function buildReport(options,ctx){
+  const {snapshot,state,hintUsed,config,processes,hints,timings,stage}=ctx;
   const now=Math.floor(Date.now()/1000),data={};
   const inventory=stage('inventoryMs',()=>inventoryOf(state.bag,config,now));
   if(['inventory','automation','all'].includes(options.mode)) data.inventory=inventory;
@@ -344,18 +336,115 @@ function main(){
   }
   if(['employees','automation','all'].includes(options.mode)) data.employees=stage('employeesMs',()=>employeesOf(state.bag,state.common,config));
   if(['production','automation','all'].includes(options.mode)) data.production=stage('productionMs',()=>productionOf(inventory,config,now,state.common));
-  if(['family','all'].includes(options.mode)) data.family=stage('familyMs',()=>familyOf(options,processes,hints,state.bag,config,now));
-  fs.mkdirSync(path.dirname(hintFile),{recursive:true});
-  fs.writeFileSync(hintFile,JSON.stringify(hints,null,2));
-  timings.totalMs=+(performance.now()-started).toFixed(2);
-  const report={schemaVersion:1,mode:options.mode,readOnly:true,capturedAt:snapshot.capturedAt,completedAt:new Date().toISOString(),
+  if(['family','all'].includes(options.mode)){
+    if(!processes) throw Error('Family board requires a fresh process list');
+    data.family=stage('familyMs',()=>familyOf(options,processes,hints,state.bag,config,now));
+  }
+  return {schemaVersion:1,mode:options.mode,readOnly:true,capturedAt:snapshot.capturedAt,completedAt:new Date().toISOString(),
     source:'local_client_cache',packageVersion:config.version,storageSequence:snapshot.sequence,keyAddressHintUsed:hintUsed,
     timings,notes:['Client cache snapshot; server state may have changed.','Occupied tasks can omit shared progress; null does not mean zero.','No game operation, network request, process write, or key persistence.'],...data};
+}
+
+function createReader(deps){
+  // Key bytes stay in this process. Every read loads a new storage snapshot.
+  let key=null,config=null,configMark=null;
+  return {read(mode){
+    if(!MODES.includes(mode)||mode==='serve') throw Error('Unsupported decoder mode: '+mode);
+    const started=performance.now(),timings={};
+    const stage=(name,fn)=>{const start=performance.now();const value=fn();timings[name]=+(performance.now()-start).toFixed(2);return value;};
+    const snapshot=stage('storageSnapshotMs',()=>deps.storageSnapshot());
+    const mark=deps.configStamp();
+    if(config===null||mark!==configMark){
+      config=stage('configurationMs',()=>deps.configuration());
+      configMark=mark;
+    }
+    let state=null,hintUsed=true;
+    if(key){
+      try{state=deps.decrypt(snapshot,key);}
+      catch{key=null;state=null;}
+    }
+    if(!state){
+      const recovered=stage('keyAndStorageDecodeMs',()=>deps.recover(snapshot));
+      if(!recovered||!recovered.key||!recovered.state) throw Error('decoder key recovery did not return an in-memory key');
+      state=recovered.state;
+      key=recovered.key;
+      hintUsed=recovered.hintUsed===true;
+    }
+    const report=deps.assemble({mode,snapshot,state,config,hintUsed,timings,stage});
+    timings.totalMs=+(performance.now()-started).toFixed(2);
+    if(Object.prototype.hasOwnProperty.call(report,'key')) throw Error('decoder report must not carry a key');
+    return {report};
+  }};
+}
+
+function configStamp(applet){
+  const folder=path.join(applet,'packages',APP);
+  const versions=fs.readdirSync(folder).filter(x=>/^\d+$/.test(x)).sort((a,b)=>Number(b)-Number(a));
+  const version=versions.find(x=>fs.existsSync(path.join(folder,x,'_subpackages_subpkg_.wxapkg')));
+  if(!version) throw Error('No cached configuration package');
+  const file=path.join(folder,version,'_subpackages_subpkg_.wxapkg');
+  const stat=fs.statSync(file);
+  return version+':'+stat.mtimeMs+':'+stat.size;
+}
+
+function serve(options){
+  const applet=findApplet(options.applet),hintFile=path.join(ROOT,'.tmp','read_only_decoder','hints.json');
+  let hints={};try{hints=JSON.parse(fs.readFileSync(hintFile));}catch{}
+  if(hints.applet!==applet) hints={applet};
+  let processes=null;
+  const reader=createReader({
+    storageSnapshot:()=>storageSnapshot(applet),
+    configStamp:()=>configStamp(applet),
+    configuration:()=>configuration(applet),
+    decrypt:(snapshot,key)=>decryptStorage(snapshot,key),
+    recover(snapshot){
+      processes=bridge(options,{op:'processes'});
+      const recovered=recoverStorage(options,snapshot,processes,hints);
+      fs.mkdirSync(path.dirname(hintFile),{recursive:true});
+      fs.writeFileSync(hintFile,JSON.stringify(hints,null,2));
+      return recovered;
+    },
+    assemble:input=>buildReport({mode:input.mode,applet:options.applet,python:options.python,output:null},{
+      snapshot:input.snapshot,state:input.state,hintUsed:input.hintUsed,config:input.config,
+      processes,hints,timings:input.timings,stage:input.stage}),
+  });
+  const lines=readline.createInterface({input:process.stdin,crlfDelay:Infinity});
+  lines.on('line',line=>{
+    const text=line.trim();
+    if(!text) return;
+    let request={};
+    try{request=JSON.parse(text);}
+    catch{process.stdout.write(JSON.stringify({ok:false,error:'invalid decoder request'})+'\n');return;}
+    try{
+      const {report}=reader.read(request.mode||'automation');
+      process.stdout.write(JSON.stringify({id:request.id,ok:true,report})+'\n');
+    }catch(error){
+      process.stdout.write(JSON.stringify({id:request.id,ok:false,error:error.message})+'\n');
+    }
+  });
+}
+
+function main(){
+  const started=performance.now(),options=argumentsOf(process.argv.slice(2));
+  if(options.mode==='serve'){serve(options);return;}
+  const timings={};
+  function stage(name,fn){const start=performance.now();const value=fn();timings[name]=+(performance.now()-start).toFixed(2);return value;}
+  const applet=findApplet(options.applet),hintFile=path.join(ROOT,'.tmp','read_only_decoder','hints.json');
+  let hints={};try{hints=JSON.parse(fs.readFileSync(hintFile));}catch{}
+  if(hints.applet!==applet) hints={applet};
+  const processes=stage('processDiscoveryMs',()=>bridge(options,{op:'processes'}));
+  const snapshot=stage('storageSnapshotMs',()=>storageSnapshot(applet));
+  const recovered=stage('keyAndStorageDecodeMs',()=>recoverStorage(options,snapshot,processes,hints));
+  const config=stage('configurationMs',()=>configuration(applet));
+  fs.mkdirSync(path.dirname(hintFile),{recursive:true});
+  fs.writeFileSync(hintFile,JSON.stringify(hints,null,2));
+  const report=buildReport(options,{snapshot,state:recovered.state,hintUsed:recovered.hintUsed,config,processes,hints,timings,stage});
+  timings.totalMs=+(performance.now()-started).toFixed(2);
   const json=JSON.stringify(report,null,2)+'\n';
   if(options.output){const output=path.resolve(options.output);fs.mkdirSync(path.dirname(output),{recursive:true});fs.writeFileSync(output,json);}
   else process.stdout.write(json);
   process.stderr.write(JSON.stringify({mode:options.mode,timings,output:options.output||'stdout'})+'\n');
 }
 
-module.exports={readv,crc32,parseMMKV,unwrapValue,extraOf,progressOf,familyFromRecords,inventoryOf,ordersOf,employeesOf,orderCapacityOf};
+module.exports={readv,crc32,parseMMKV,unwrapValue,extraOf,progressOf,familyFromRecords,inventoryOf,ordersOf,employeesOf,orderCapacityOf,createReader};
 if(require.main===module){try{main();}catch(error){process.stderr.write(JSON.stringify({error:error.message,readOnly:true})+'\n');process.exitCode=1;}}

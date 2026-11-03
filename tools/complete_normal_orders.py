@@ -78,18 +78,42 @@ def verify_normal_triple(tasker, frame):
         raise decoded.DecodeError(f'Normal triple count not confirmed; no accept: {text!r}')
 
 
+def finish_return(tasker, controller, receipt):
+    if not ensure_returned_to_farm(tasker, controller):
+        raise decoded.DecodeError('Normal completion return not confirmed')
+    return delivery.confirm_return(receipt)
+
+
 def finish_normal_delivery(tasker, controller, receipt, timeout=300):
     """Resume only this UID; claim once and require fresh post-reward state."""
     deadline = time.monotonic() + timeout
     while time.monotonic() < deadline:
         data = decoded.snapshot()
         receipt = delivery.recover(receipt, data)
+        if receipt['status'] == 'completed':
+            dismiss_reward_overlay(controller)
+            return finish_return(tasker, controller, receipt)
         order = next((row for row in data['orders'] if row['uid'] == receipt['uid']
                       and row['category'] == 'normal'), None)
         if not order or order['statusCode'] not in (2, 3, 99):
             raise decoded.DecodeError('Normal delivery UID/state changed; no new input')
         if order['statusCode'] == 3:
-            if not open_normal_orders(controller):
+            # The map's order guest can award directly while opening the board.
+            # Reserve before navigation and stop its clicks at the reward layer.
+            receipt = delivery.reserve_reward(receipt, data)
+            navigation = open_normal_orders(controller, stop_when=reward_overlay_visible)
+            if reward_overlay_visible(screenshot(controller)):
+                dismiss_reward_overlay(controller)
+                for attempt in range(8):
+                    try:
+                        receipt = delivery.complete(receipt, decoded.snapshot())
+                        break
+                    except decoded.DecodeError:
+                        if attempt == 7:
+                            raise
+                        time.sleep(.3)
+                return finish_return(tasker, controller, receipt)
+            if not navigation:
                 raise decoded.DecodeError('Normal reward board unavailable')
             number = order['slot']
             pin = (155 + 210 * ((number - 1) % 3), 470 + 156 * ((number - 1) // 3))
@@ -99,7 +123,10 @@ def finish_normal_delivery(tasker, controller, receipt, timeout=300):
             reward_frame = screenshot(controller)
             if not card_selected(reward_frame, number) or _claim_reward_button(reward_frame) is None:
                 raise decoded.DecodeError('Normal reward button not confirmed; no claim sent')
-            receipt = delivery.reserve_reward(receipt, decoded.snapshot())
+            current = next((row for row in decoded.snapshot()['orders'] if row['category'] == 'normal'
+                            and row['uid'] == receipt['uid'] and row['slot'] == number), None)
+            if not current or current['statusCode'] != 3:
+                raise decoded.DecodeError('Normal reward source changed after navigation; no claim sent')
             if not claim_completed_reward(controller, tasker):
                 raise decoded.DecodeError('Normal reward input/outcome unresolved; no retry')
             # Storage can update after the confirmation animation. Read only.
@@ -111,8 +138,7 @@ def finish_normal_delivery(tasker, controller, receipt, timeout=300):
                     if attempt == 4:
                         raise
                     time.sleep(.3)
-            ensure_returned_to_farm(tasker, controller)
-            return receipt
+            return finish_return(tasker, controller, receipt)
         time.sleep(2)
     raise decoded.DecodeError('Normal reward timeout; preserve receipt and do not accept again')
 
@@ -282,6 +308,40 @@ def claim_completed_reward(controller: Win32Controller, tasker=None) -> bool:
     return True
 
 
+def duplicate_accept_blocked(previous, items, *, now=None):
+    """True when this exact recipe and stock were accepted moments ago.
+
+    A broken previous record raises. It is not permission to accept again.
+    """
+    if not isinstance(previous, dict):
+        raise ValueError('Previous completion record must be an object')
+    prev = previous
+    submitted = prev.get('submitted', [])
+    if not isinstance(submitted, list):
+        raise ValueError('Previous submitted orders must be a list')
+    prev_gen = prev.get('generated_at_utc')
+    if not prev_gen:
+        if submitted:
+            raise ValueError('Previous submitted orders lack a timestamp')
+        return False
+    moment = now or datetime.now(timezone.utc)
+    generated = datetime.fromisoformat(prev_gen)
+    if generated.tzinfo is None:
+        generated = generated.replace(tzinfo=timezone.utc)
+    age = (moment - generated).total_seconds()
+    if not 0 <= age <= 300:
+        return False
+    signature = order_signature(items)
+    current = {(item['name'], int(item['actual'])) for item in items}
+    for prev_sub in submitted:
+        if order_signature(prev_sub.get('items') or []) != signature:
+            continue
+        previous_actual = {(item['name'], int(item['actual'])) for item in prev_sub.get('items') or []}
+        if previous_actual == current:
+            return True
+    return False
+
+
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--target-file", type=Path, help="cycle/target JSON; rematch by shortage crops on a fresh board scan (not frozen order id)")
@@ -304,8 +364,10 @@ def main() -> int:
     RESULT.parent.mkdir(parents=True, exist_ok=True)
     try:
         previous_completion = json.loads(RESULT.read_text(encoding="utf-8"))
-    except Exception:
+    except FileNotFoundError:
         previous_completion = {}
+    except (OSError, json.JSONDecodeError) as error:
+        raise decoded.DecodeError('上次交单记录无法读取，未接受：' + str(error)) from error
     RESULT.write_text(
         json.dumps(
             {"generated_at_utc": datetime.now(timezone.utc).isoformat(), "status": "running"},
@@ -314,9 +376,12 @@ def main() -> int:
         encoding="utf-8",
     )
     startup_data = decoded.snapshot() if decoded.enabled() else None
-    if startup_data is not None and startup_data['packageVersion'] != '90':
-        raise decoded.DecodeError('Normal order workflow package version is unverified; no UI input')
+    if startup_data is not None:
+        decoded.require_normal_package(startup_data)
     pending_delivery = delivery.load() if startup_data is not None else None
+    if (pending_delivery and pending_delivery['status'] == 'completed'
+            and pending_delivery.get('returned_to_farm', True) is not False):
+        pending_delivery = None  # A prior terminal receipt cannot count as a new completion.
     if pending_delivery and pending_delivery['status'] != 'completed':
         pending_delivery = delivery.recover(pending_delivery, startup_data)
     products = load_products()
@@ -356,6 +421,12 @@ def main() -> int:
         dismiss_offline_income(controller, tasker)
         leave_employee_ui_if_visible(controller)
         dismiss_reward_overlay(controller)
+        if pending_delivery and pending_delivery['status'] == 'completed':
+            receipt = finish_return(tasker, controller, pending_delivery)
+            output = delivery_output(receipt)
+            RESULT.write_text(json.dumps(output, ensure_ascii=False, indent=2) + '\n', encoding='utf-8')
+            print(json.dumps(output, ensure_ascii=False))
+            return 0
         navigation = open_normal_orders(controller)
         if not navigation:
             # Reward "继续" overlay or a leftover popup can block the notice board.
@@ -474,29 +545,13 @@ def main() -> int:
 
             # Refuse to re-accept the same recipe+stock snapshot within a few
             # minutes (false-accept loops leave inventory unchanged).
-            try:
-                prev = previous_completion if isinstance(previous_completion, dict) else {}
-                prev_gen = prev.get("generated_at_utc")
-                if prev_gen:
-                    age = (datetime.now(timezone.utc) - datetime.fromisoformat(prev_gen)).total_seconds()
-                    if 0 <= age <= 300:
-                        for prev_sub in prev.get("submitted") or []:
-                            if order_signature(prev_sub.get("items") or []) != order_signature(items):
-                                continue
-                            prev_actual = {(i["name"], int(i["actual"])) for i in prev_sub.get("items") or []}
-                            cur_actual = {(i["name"], int(i["actual"])) for i in items}
-                            if prev_actual == cur_actual:
-                                skipped.append({
-                                    "order": index,
-                                    "reason": "duplicate_uncconsumed_accept",
-                                    "items": items,
-                                })
-                                items = []
-                                break
-                        if not items:
-                            continue
-            except Exception:
-                pass
+            if duplicate_accept_blocked(previous_completion, items):
+                skipped.append({
+                    "order": index,
+                    "reason": "duplicate_uncconsumed_accept",
+                    "items": items,
+                })
+                continue
 
             if decoded.enabled():
                 items = decoded.assert_order_unchanged(items)

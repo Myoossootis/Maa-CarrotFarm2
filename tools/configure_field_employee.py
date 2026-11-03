@@ -1005,6 +1005,7 @@ def configure_items(
     items: dict[str, int],
     *,
     repeat: bool = False,
+    before_save=None,
 ):
     slot = SLOTS[slot_id]
     if not items or any(count <= 0 for count in items.values()):
@@ -1067,6 +1068,10 @@ def configure_items(
     frame = ensure_repeat_checkbox(controller, frame, repeat=repeat, tasker=tasker)
     if match(frame, "arrange_button.png", (360, 985, 290, 145)) < 0.75:
         raise RuntimeError("arrange button not recognized")
+    if before_save is not None:
+        if not decoded.enabled():
+            raise RuntimeError('Durable save intent requires decoded state')
+        before_save(decoded.snapshot())
     click(controller, 500, 1060)
     frame = screenshot(controller)
     if match(frame, "work_plan_button.png", (450, button_y - 60, 230, 120)) < 0.70:

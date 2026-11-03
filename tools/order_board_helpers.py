@@ -122,6 +122,15 @@ def close_order_board(controller: "Win32Controller") -> bool:
 def ensure_returned_to_farm(tasker: "Tasker", controller: "Win32Controller") -> bool:
     """Close a known order board once, then verify the dedicated farm entry."""
     frame = screenshot(controller)
+    # Reward dismissal can expose the board halfway through its fade-in.
+    # Wait only on images before deciding whether to close a board or enter a map.
+    for observation in range(8):
+        if order_board_visible(frame) or any(template_hit(frame, name) is not None for name in (
+                'VerifyRestaurantEntryVisible', 'ClickFarmEntry', 'ClickFarmEntryAlert')):
+            break
+        if observation < 7:
+            time.sleep(.2)
+            frame = screenshot(controller)
     if order_board_visible(frame):
         if not close_order_board(controller):
             raise RuntimeError('order board close control not recognized; stopped without input')

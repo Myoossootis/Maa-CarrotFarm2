@@ -1,7 +1,6 @@
 """Configure a local MFAAvalonia folder to use this project's isolated runtime."""
 
 import argparse
-import filecmp
 import importlib.metadata
 import json
 from pathlib import Path
@@ -51,74 +50,38 @@ def _sync_instance_task_items(ui_dir, interface):
         path.write_text(json.dumps(data, ensure_ascii=False, indent=2) + '\n', encoding='utf-8')
 
 
+def _dashboard_card(card_id, col, row, row_span):
+    return {
+        'Id': card_id, 'Col': col, 'Row': row, 'ColSpan': 4, 'RowSpan': row_span,
+        'ExpandedRowSpan': row_span, 'ExpandedColSpan': 4,
+        'MaximizedRowSpan': 1, 'MaximizedColSpan': 1,
+    }
+
+
 def _ensure_monitor_top_left(ui_dir):
-    """Put live_view (monitor) at top-left; task list below it."""
+    """Seed task list on the left and monitor on the right when no layout is saved.
+
+    An existing arrangement is left untouched, including one the user dragged.
+    """
     config_file = ui_dir / 'config' / 'config.json'
     if not config_file.is_file():
         return
     data = json.loads(config_file.read_text(encoding='utf-8'))
     key = 'UI.DashboardCardGrid.Layout.TaskQueueView'
+    current = data.get(key)
+    if isinstance(current, list) and current:
+        return
     layout = [
-        {
-            'Id': 'live_view',
-            'Col': 0,
-            'Row': 0,
-            'ColSpan': 4,
-            'RowSpan': 3,
-            'ExpandedRowSpan': 3,
-            'ExpandedColSpan': 4,
-            'MaximizedRowSpan': 1,
-            'MaximizedColSpan': 1,
-        },
-        {
-            'Id': 'task_list',
-            'Col': 0,
-            'Row': 3,
-            'ColSpan': 4,
-            'RowSpan': 5,
-            'ExpandedRowSpan': 5,
-            'ExpandedColSpan': 4,
-            'MaximizedRowSpan': 1,
-            'MaximizedColSpan': 1,
-        },
-        {
-            'Id': 'settings',
-            'Col': 4,
-            'Row': 0,
-            'ColSpan': 4,
-            'RowSpan': 5,
-            'ExpandedRowSpan': 5,
-            'ExpandedColSpan': 4,
-            'MaximizedRowSpan': 1,
-            'MaximizedColSpan': 1,
-        },
-        {
-            'Id': 'task_desc',
-            'Col': 4,
-            'Row': 5,
-            'ColSpan': 4,
-            'RowSpan': 3,
-            'ExpandedRowSpan': 3,
-            'ExpandedColSpan': 4,
-            'MaximizedRowSpan': 1,
-            'MaximizedColSpan': 1,
-        },
-        {
-            'Id': 'log',
-            'Col': 8,
-            'Row': 0,
-            'ColSpan': 4,
-            'RowSpan': 8,
-            'ExpandedRowSpan': 8,
-            'ExpandedColSpan': 4,
-            'MaximizedRowSpan': 1,
-            'MaximizedColSpan': 1,
-        },
+        _dashboard_card('task_list', 0, 0, 8),
+        _dashboard_card('settings', 4, 0, 5),
+        _dashboard_card('task_desc', 4, 5, 3),
+        _dashboard_card('live_view', 8, 0, 4),
+        _dashboard_card('log', 8, 4, 4),
     ]
     data[key] = layout
     hash_key = 'UI.DashboardCardGrid.ResourceLayoutHash.TaskQueueView'
     if hash_key in data:
-        data[hash_key] = 'FORCE_MONITOR_TOP_LEFT_V1'
+        data[hash_key] = 'TASK_LIST_LEFT_MONITOR_RIGHT_V1'
     config_file.write_text(json.dumps(data, ensure_ascii=False, indent=2) + '\n', encoding='utf-8')
 
 
@@ -163,10 +126,11 @@ def prepare(ui_dir):
     # native Click/Scroll tasks in the new background-safe local UI.
     allowed = {
         'OpenDecodedDashboard',
+        'OpenFarmHud',
         'ManualPlantingPreflight',
         'ManualPlantingOnce',
         'RuntimePreflight',
-        'RunDailyBatchOrders', 'RunDailyPartyOrders', 'RunDailyTakeoutOrders', 'RunDailyNormalOrders',
+        'RunDailyBatchOrders', 'RunDailyPartyOrders', 'RunDailyTakeoutOrders', 'RunDailyNormalOrders', 'RunNormalOrderLoop',
         'CloseOfflineIncome',
         'RefreshOrder', 'RunFeedProduction',
         'EnterRestaurantBackground', 'EnterFarmBackground', 'OpenPhoneBackground',
@@ -179,11 +143,13 @@ def prepare(ui_dir):
         'RunShortCycle', 'RecognizeClockStart',
     }
     order = {
+        'OpenFarmHud': -2,
         'OpenDecodedDashboard': -1,
         'ManualPlantingPreflight': -0.5,
         'ManualPlantingOnce': -0.4,
         'RuntimePreflight': 0,
         'RunDailyBatchOrders': 1, 'RunDailyPartyOrders': 2, 'RunDailyTakeoutOrders': 3, 'RunDailyNormalOrders': 4,
+        'RunNormalOrderLoop': 4.1,
         'CloseOfflineIncome': 4,
         'RefreshOrder': 4,
         'EnterRestaurantBackground': 5, 'EnterFarmBackground': 6, 'OpenPhoneBackground': 7,
@@ -213,9 +179,13 @@ def prepare(ui_dir):
     native = Path(maa.__file__).parent / 'bin'
 
     def copy_changed(source, destination):
-        if not Path(destination).exists() or not filecmp.cmp(source, destination, shallow=False):
-            return shutil.copy2(source, destination)
-        return destination
+        destination = Path(destination)
+        if destination.exists():
+            source_stat = Path(source).stat()
+            dest_stat = destination.stat()
+            if source_stat.st_size == dest_stat.st_size and int(source_stat.st_mtime) == int(dest_stat.st_mtime):
+                return destination
+        return shutil.copy2(source, destination)
 
     shutil.copytree(native, ui_dir / 'runtimes/win-x64/native', dirs_exist_ok=True, copy_function=copy_changed)
     config = ui_dir / 'config'
@@ -227,7 +197,37 @@ def prepare(ui_dir):
     settings = json.loads(settings_file.read_text(encoding='utf-8')) if settings_file.exists() else {}
     settings['NoAutoStart'] = 'True'
     settings_file.write_text(json.dumps(settings, ensure_ascii=False, indent=4) + '\n', encoding='utf-8')
+    (ui_dir / '.prepare_stamp.json').write_text(
+        json.dumps(source_stamp(), ensure_ascii=False, indent=2) + '\n', encoding='utf-8')
     return ui_dir
+
+
+def file_mark(path):
+    stat = Path(path).stat()
+    return {'size': stat.st_size, 'mtime': int(stat.st_mtime)}
+
+
+def source_stamp():
+    """Identity of the files copied into the local UI. Seconds, matching the launcher."""
+    import maa
+    return {
+        'interface': file_mark(ROOT / 'assets/interface.json'),
+        'pipeline': file_mark(ROOT / 'assets/resource/pipeline/carrot_farm.json'),
+        'maafw_dll': file_mark(Path(maa.__file__).parent / 'bin' / 'MaaFramework.dll'),
+        'maafw': importlib.metadata.version('MaaFw'),
+    }
+
+
+def up_to_date(ui_dir):
+    ui_dir = Path(ui_dir)
+    stamp_path = ui_dir / '.prepare_stamp.json'
+    if not (ui_dir / 'MFAAvalonia.exe').is_file() or not stamp_path.is_file():
+        return False
+    try:
+        saved = json.loads(stamp_path.read_text(encoding='utf-8'))
+    except (OSError, json.JSONDecodeError):
+        return False
+    return saved == source_stamp()
 
 
 def main():

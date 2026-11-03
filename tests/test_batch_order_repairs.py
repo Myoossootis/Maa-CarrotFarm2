@@ -59,6 +59,34 @@ class BridgeLogTests(unittest.TestCase):
             self.assertIn(str(logs[0]), out.getvalue())
             self.assertEqual(list((root / ".tmp/maa_ui_runs").iterdir()), [])
 
+    def test_worker_lines_are_published_on_the_caller_thread(self):
+        from agent import cycle_bridge as bridge
+        seen = []
+        with tempfile.TemporaryDirectory(dir=ROOT / ".tmp") as folder:
+            root = Path(folder)
+            (root / "tools").mkdir()
+            (root / "tools/ui_worker.py").write_text(
+                "print('[进度] 订单1 玫瑰 缺19', flush=True)\n",
+                encoding="utf-8",
+            )
+            with patch.object(bridge, "ROOT", root), patch("sys.stdout", io.StringIO()):
+                self.assertTrue(bridge.run_cycle_worker([], is_stopping=lambda: False, publish=seen.append))
+        self.assertEqual(seen, ['[进度] 订单1 玫瑰 缺19'])
+
+    def test_routine_worker_lines_stay_out_of_the_panel(self):
+        from agent import cycle_bridge as bridge
+        seen = []
+        with tempfile.TemporaryDirectory(dir=ROOT / ".tmp") as folder:
+            root = Path(folder)
+            (root / "tools").mkdir()
+            (root / "tools/ui_worker.py").write_text(
+                "print('[数据源] 只读解码', flush=True)\nprint('[日常] 子步骤启动', flush=True)\n",
+                encoding="utf-8",
+            )
+            with patch.object(bridge, "ROOT", root), patch("sys.stdout", io.StringIO()):
+                self.assertTrue(bridge.run_cycle_worker([], is_stopping=lambda: False, publish=seen.append))
+        self.assertEqual(seen, [])
+
 
 class BatchFailureTests(unittest.TestCase):
     def acceptance_failure(self, *, checked=True, count=6, confirmation_error=None, capacity_after=None):

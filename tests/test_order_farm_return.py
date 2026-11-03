@@ -11,6 +11,15 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 class FarmReturnTests(unittest.TestCase):
+    def test_reward_fade_waits_for_known_board_without_clicking_transition(self):
+        with patch.object(board,'screenshot',side_effect=['transition','orders','restaurant']) as screen, \
+                patch.object(board,'template_hit',side_effect=self.template), \
+                patch.object(board,'close_order_board',return_value=True) as close, \
+                patch.object(board,'enter_farm',return_value={'status':'entered'}) as enter, \
+                patch.object(board.time,'sleep'):
+            self.assertTrue(board.ensure_returned_to_farm(None,None))
+        self.assertEqual(screen.call_count,3);close.assert_called_once();enter.assert_called_once()
+
     def test_shared_phone_and_backpack_do_not_prove_farm(self):
         for name, expected in (('restaurant', False), ('farm', True)):
             frame = cv2.imread(str(ROOT / f'tests/fixtures/map_return/{name}_navigation.png'))

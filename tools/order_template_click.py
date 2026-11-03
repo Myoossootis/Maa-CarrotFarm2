@@ -83,18 +83,20 @@ def click_template_node(controller, name, frame=None):
     return True
 
 
-def open_normal_orders(controller):
+def open_normal_orders(controller, *, stop_when=None):
     """Backward-compatible alias for the normal-order tab."""
-    return open_orders(controller, "normal")
+    return open_orders(controller, "normal", stop_when=stop_when)
 
 
-def open_orders(controller, order_type: str = "normal") -> bool:
+def open_orders(controller, order_type: str = "normal", *, stop_when=None) -> bool:
     """Open the shared notice-board and switch to party/takeout/normal tab."""
     order_type = normalize_order_type(order_type)
     ready = _READY_NODE[order_type]
     tab = _TAB_CLICK_NODE[order_type]
     for _ in range(12):
         frame = screenshot(controller)
+        if stop_when is not None and stop_when(frame):
+            return False
         if template_hit(frame, ready) is not None:
             return True
         for name in (

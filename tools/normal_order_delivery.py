@@ -30,8 +30,7 @@ def reserve(items, number, data, path=PATH):
     if old and old['status'] != 'completed':
         raise decoded.DecodeError('Unresolved normal delivery; no new acceptance')
     decoded.validate(data)
-    if data['packageVersion'] != '90':
-        raise decoded.DecodeError('Normal delivery package version is unverified')
+    decoded.require_normal_package(data)
     uids = {item['game_order_uid'] for item in items}
     if len(uids) != 1 or not 2 <= len(items) <= 4:
         raise decoded.DecodeError('Normal delivery needs one UID and a complete recipe')
@@ -53,9 +52,15 @@ def reserve(items, number, data, path=PATH):
 
 def recover(receipt, data, path=PATH):
     decoded.validate(data)
-    if data['packageVersion'] != '90' or receipt['package_version'] != data['packageVersion']:
+    decoded.require_normal_package(data)
+    if receipt['package_version'] != data['packageVersion']:
         raise decoded.DecodeError('Normal delivery version changed; no replay')
     if receipt['status'] == 'reward_intent':
+        if receipt.get('reward_navigation_reserved') is True:
+            try:
+                return complete(receipt, data, path)
+            except decoded.DecodeError:
+                pass
         raise decoded.DecodeError('Unresolved normal reward input; no repeated claim or acceptance')
     if receipt['status'] == 'accept_intent':
         if not decoded.submission_confirmed(receipt['items'], data):
@@ -67,19 +72,24 @@ def recover(receipt, data, path=PATH):
 
 def reserve_reward(receipt, data, path=PATH):
     decoded.validate(data)
-    if data['packageVersion'] != '90' or receipt['package_version'] != data['packageVersion']:
+    decoded.require_normal_package(data)
+    if receipt['package_version'] != data['packageVersion']:
         raise decoded.DecodeError('Normal reward package version changed')
     order = next((row for row in data['orders'] if row['uid'] == receipt['uid'] and row['category'] == 'normal'), None)
-    if receipt['status'] != 'accepted' or not order or order['statusCode'] != 3:
+    if (receipt['status'] != 'accepted' or not order or order['statusCode'] != 3
+            or order['slot'] != receipt['order']
+            or {row['itemId']: row['count'] * 3 for row in order['costs']}
+               != {row['game_item_id']: row['required'] for row in receipt['items']}):
         raise decoded.DecodeError('Normal reward UID or success state not confirmed')
-    receipt = {**receipt, 'status': 'reward_intent'}
+    receipt = {**receipt, 'status': 'reward_intent', 'reward_navigation_reserved': True}
     write_json(path, receipt)
     return receipt
 
 
 def complete(receipt, data, path=PATH):
     decoded.validate(data)
-    if data['packageVersion'] != '90' or receipt['package_version'] != data['packageVersion']:
+    decoded.require_normal_package(data)
+    if receipt['package_version'] != data['packageVersion']:
         raise decoded.DecodeError('Normal reward package version changed')
     order = next((row for row in data['orders'] if row['uid'] == receipt['uid']), None)
     slot = next((row for row in data['orders'] if row['category'] == 'normal' and row['slot'] == receipt['order']), None)
@@ -87,7 +97,18 @@ def complete(receipt, data, path=PATH):
             or order and order['statusCode'] != 1):
         raise decoded.DecodeError('Normal reward outcome unconfirmed; no new order')
     receipt = {**receipt, 'status': 'completed', 'reward_claimed': True,
+               'returned_to_farm': False,
                'completed_at_utc': datetime.now(timezone.utc).isoformat()}
+    write_json(path.parent / 'receipts' / (receipt['operation_id'] + '.json'), receipt)
+    write_json(path, receipt)
+    return receipt
+
+
+def confirm_return(receipt, path=PATH):
+    """Caller has confirmed the farm; this checkpoint never issues game input."""
+    if receipt['status'] != 'completed':
+        raise decoded.DecodeError('Cannot finish return before business completion')
+    receipt = {**receipt, 'returned_to_farm': True}
     write_json(path.parent / 'receipts' / (receipt['operation_id'] + '.json'), receipt)
     write_json(path, receipt)
     return receipt

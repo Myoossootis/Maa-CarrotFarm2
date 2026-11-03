@@ -9,6 +9,52 @@ function capacityConfig(){return {version:'90',name:id=>String(id),items:new Map
   [103,{item_type:24,params:'output_id,501'}],[104,{item_type:24,params:'output_id,502'}]
 ]),outputs:new Map([[501,{item_id:103,type:2,limit:6}],[502,{item_id:104,type:2,limit:6}]])};}
 
+test('resident reader reloads the bag and does not keep a stale inventory or the key',()=>{
+  const {createReader}=require('./read_only_game_state.cjs');
+  const bags=[{bag:[[1,14,3]]},{bag:[[1,14,8]]}];
+  let storageCalls=0,configCalls=0,recoverCalls=0,stamp='pkg-a';
+  const reader=createReader({
+    storageSnapshot:()=>({sequence:++storageCalls,capturedAt:'2026-11-03T04:00:00.000Z'}),
+    configStamp:()=>stamp,
+    configuration:()=>{configCalls+=1;return {version:'98'};},
+    decrypt:(snapshot,key)=>{
+      if(key!=='kept') throw Error('stale key');
+      return bags[Math.min(snapshot.sequence,bags.length)-1];
+    },
+    recover:()=>{recoverCalls+=1;return {state:bags[0],key:'kept',hintUsed:false};},
+    assemble:({state,config,mode,snapshot})=>({mode,version:config.version,count:state.bag[0][2],sequence:snapshot.sequence}),
+  });
+  const first=reader.read('automation').report;
+  const second=reader.read('automation').report;
+  assert.equal(first.count,3);
+  assert.equal(second.count,8);
+  assert.equal(storageCalls,2);
+  assert.equal(configCalls,1);
+  assert.equal(recoverCalls,1);
+  assert.equal(first.key,undefined);
+  stamp='pkg-b';
+  reader.read('automation');
+  assert.equal(configCalls,2);
+});
+
+test('a rejected decrypt drops the cached key and reads the new bag',()=>{
+  const {createReader}=require('./read_only_game_state.cjs');
+  let fail=false,recoverCalls=0;
+  const reader=createReader({
+    storageSnapshot:()=>({sequence:1,capturedAt:'2026-11-03T04:00:00.000Z'}),
+    configStamp:()=>'pkg',
+    configuration:()=>({version:'98'}),
+    decrypt:()=>{if(fail) throw Error('stale');return {bag:[[1,14,1]]};},
+    recover:()=>{recoverCalls+=1;return {state:{bag:[[1,14,9]]},key:'next',hintUsed:true};},
+    assemble:({state})=>({count:state.bag[0][2]}),
+  });
+  assert.equal(reader.read('orders').report.count,9);
+  assert.equal(reader.read('orders').report.count,1);
+  fail=true;
+  assert.equal(reader.read('orders').report.count,9);
+  assert.equal(recoverCalls,2);
+});
+
 test('order capacity uses linked tokens, sums records and keeps zero separate from unknown',()=>{
   const config=capacityConfig(),inventory={records:[{itemId:103,count:2},{itemId:103,count:4},{itemId:104,count:1}]};
   const result=orderCapacityOf(inventory,config);
