@@ -1,7 +1,7 @@
 """Operations desk with local task settings, modeled on a sidebar HUD.
 
-The window shows monitor, orders, run templates, local settings, and diagnostics.
-It never imports a game controller and never sends input.
+The window launches isolated workers, shows their logs and controls their lifetime.
+Game input stays in the existing Maa worker modules.
 """
 
 from __future__ import annotations
@@ -21,6 +21,7 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 from agent import task_settings
+from tools.hud_runtime import TaskRun, PHASE_LABELS
 
 try:
     from .decoded_dashboard import SNAPSHOT, local_time, read_live
@@ -67,7 +68,7 @@ TEMPLATE_META = (
     dict(entry='CloseOfflineIncome', label='关闭离线收益', kind='面板', loop='一次',
          detail='确认离线收益后点空白关掉。不领取，不排产。'),
     dict(entry='RefreshOrder', label='刷新指定订单', kind='订单', loop='一张',
-         detail='按位置更换一张订单并免费加速。位置在任务选项里填。'),
+         detail='按右侧选择的类型和位置更换订单，并免费加速。'),
     dict(entry='ManualPlantingOnce', label='手动种植一次', kind='种植', loop='一次',
          detail='按所选农田、作物和格数种一次。结果未确认就停止。'),
     dict(entry='ManualPlantingPreflight', label='手动种植预检', kind='预检', loop='只预检',
@@ -75,13 +76,13 @@ TEMPLATE_META = (
     dict(entry='RunFeedProduction', label='饲料生产（农田3）', kind='饲料', loop='直到停止',
          detail='占用农田3做饲料。放到任务队列最后，点停止才结束。'),
     dict(entry='RunShortCyclePreview', label='单订单扫描与排产预览', kind='高级周期', loop='按设置轮数',
-         detail='只预览单订单扫描与排产计划。'),
+         detail='预览执行步骤与参数，确认后再选择正式模板。'),
     dict(entry='RunShortCycleApply', label='单订单补产交单', kind='高级周期', loop='按设置轮数',
          detail='正式单订单补产交单。保留原有执行前确认。'),
     dict(entry='RunShortCycle', label='单订单补产与交单（高级）', kind='高级周期', loop='按设置轮数',
          detail='可选择仅预览或正式执行，并设置轮数、间隔和超时。'),
 )
-LINK_COLOR = {'未读取': '#9aa3af', '读取中': BLUE, '已读取': '#1f9d55', '读取失败': STOP}
+LINK_COLOR = {'未读取': '#9aa3af', '缓存': '#9aa3af', '读取中': BLUE, '已读取': '#1f9d55', '读取失败': STOP}
 
 
 def load_interface(path=None):
@@ -105,13 +106,12 @@ def allowed_labels(interface):
 
 
 def settings_lines(interface):
-    preflight = next(task['name'] for task in interface['task'] if task['entry'] == 'RuntimePreflight')
     controller = interface['controller'][0]['name']
     return [
         f'控制器    {controller}',
-        '游戏不要最小化。本窗口不发送点击。',
+        '游戏不要最小化。开始执行模板，暂停后可继续，结束保留已保存进度。',
         '一号位默认允许    ' + '、'.join(allowed_labels(interface)),
-        f'连接检查仍是任务「{preflight}」，在任务列表勾选后执行。',
+        '页面定位与输入沿用 Maa，库存和生产使用本地只读解码。',
     ]
 
 
@@ -123,27 +123,20 @@ def config_rows(template):
     )
 
 
-def next_control(action, phase, template):
-    """Update only the desk's own phase. No command line is returned."""
-    name = template['task_name']
-    if action == 'start':
-        return dict(phase='running', status='已选择，未发送输入',
-                    message=f'已选择「{name}」。本操作台不点击游戏，请在任务列表勾选这项后点开始。')
-    if action == 'pause':
-        if phase == 'running':
-            return dict(phase='paused', status='本地选择已暂停', message='已暂停本地选择。Maa任务如在运行，请在任务列表停止。')
-        if phase == 'paused':
-            return dict(phase='paused', status='本地选择已暂停', message='本地选择已经暂停；不控制Maa任务的运行状态。')
-        return dict(phase=phase, status='尚未选择', message='操作台尚未选择任务；不控制Maa任务的运行状态。')
-    if action == 'stop':
-        return dict(phase='idle', status='本地选择已结束', message='已结束本地选择，没有向游戏发送输入。Maa任务如在运行，请在任务列表停止。')
-    raise ValueError(action)
+def option_values(variables, options):
+    result = {}
+    for name, variable in variables.items():
+        kind = options[name]['type']
+        result[name] = ([key for key, item in variable.items() if item.get()] if kind == 'checkbox'
+                        else {key: item.get() for key, item in variable.items()} if kind == 'input'
+                        else variable.get())
+    return result
 
 
-def farm_status(snapshot):
+def farm_status(snapshot, input_state='未发送'):
     if not snapshot:
         return [('库存品类', '—'), ('订单', '—'), ('员工计划', '—'), ('生产槽位', '—'),
-                ('采集时间', '—'), ('输入状态', '未发送'), ('读取状态', '未读取')]
+                ('采集时间', '—'), ('输入状态', input_state), ('读取状态', '未读取')]
     products = (snapshot.get('inventory') or {}).get('products') or []
     orders = snapshot.get('orders')
     plans = (snapshot.get('employees') or {}).get('plans') or []
@@ -156,7 +149,7 @@ def farm_status(snapshot):
         ('员工计划', str(len(plans))),
         ('生产槽位', str(slots) if buildings else '未读取'),
         ('采集时间', local_time(captured) if captured else '—'),
-        ('输入状态', '未发送'),
+        ('输入状态', input_state),
         ('读取状态', '已读取'),
     ]
 
@@ -463,7 +456,8 @@ def launch_hud(page='autorun'):
     interpreter = str(pythonw) if pythonw.exists() else sys.executable
     log = ROOT / '.tmp/farm_hud/window.log'
     log.parent.mkdir(parents=True, exist_ok=True)
-    command = [interpreter, '-X', 'utf8', str(Path(__file__).resolve()), '--page', page]
+    command = [interpreter, '-X', 'utf8', str(Path(__file__).resolve()), '--page', page,
+               '--app-version', load_interface()['version'], '--live']
     with log.open('a', encoding='utf-8') as stream:
         process = subprocess.Popen(command, cwd=ROOT, stdin=subprocess.DEVNULL, stdout=stream, stderr=stream,
                                    creationflags=getattr(subprocess, 'CREATE_NO_WINDOW', 0))
@@ -491,22 +485,30 @@ def _draw_icon(canvas, kind, color):
 
 class FarmHud:
     def __init__(self, root, interface=None, snapshot=None, snapshot_path=SNAPSHOT,
-                 load_cache=True, start_read=False, initial_page='autorun', capture_frames=True):
+                 load_cache=True, start_read=False, initial_page='autorun', capture_frames=True, task_run=None):
         import tkinter as tk
         from tkinter import ttk
         self.tk = tk
         self.root = root
         self.interface = interface or load_interface()
         self.templates = templates(self.interface)
-        self.template_index = 0
+        self.template_index = next(i for i, item in enumerate(self.templates) if item['entry'] == 'RunNormalOrderLoop')
         self.snapshot_path = snapshot_path
         self.snapshot = snapshot
         self.page = initial_page if initial_page in PAGE_TITLES else 'autorun'
         self.phase = 'idle'
+        self.task_run = task_run if task_run is not None else TaskRun()
+        self.closing = False
+        self.control_buttons = {}
+        self.template_picker = None
+        self.last_run_message = None
+        self.control_error = None
         self.link = '已读取' if snapshot else '未读取'
+        self.previous_read_link = self.link
         self.generation = 0
         self.reading = False
         self.capture_frames = capture_frames
+        self.live_reads = start_read
         self.monitor = None
         self.results = queue.Queue()
         self.screen_label = None
@@ -515,9 +517,9 @@ class FarmHud:
         self.log_lines = []
         self.nav_rows = {}
         self.log_box = None
-        self.template_var = tk.StringVar(value=self.templates[0]['label'])
+        self.template_var = tk.StringVar(value=self.templates[self.template_index]['label'])
         self.status_var = tk.StringVar(value='尚未启动')
-        self.detail_var = tk.StringVar(value='从模板里选一项。开始、暂停、结束只改变这里的状态，不点击游戏。')
+        self.detail_var = tk.StringVar(value='选择模板并填写配置，点击开始执行；暂停后可继续同一次运行。')
         self.link_var = tk.StringVar(value=self.link)
         self.read_caption = tk.StringVar(value='读取')
         root.title(TITLE)
@@ -541,12 +543,12 @@ class FarmHud:
         if snapshot is None and load_cache and snapshot_path.exists():
             try:
                 self.snapshot = json.loads(snapshot_path.read_text(encoding='utf-8'))
-                self.link = '已读取'
+                self.link = '缓存'
             except (OSError, json.JSONDecodeError) as error:
                 self.log_lines.append(f'{stamp()} · 上次快照不可用：{error}')
         self.link_var.set(self.link)
         self._paint_link()
-        self.log('操作台已打开。未向游戏发送输入。')
+        self.log('自动化界面已打开。尚未向游戏发送输入。')
         root.protocol('WM_DELETE_WINDOW', self.close)
         self.show(self.page)
         root.after(100, self.poll)
@@ -569,6 +571,7 @@ class FarmHud:
         self.stop_monitor()
         self.screen_label = None
         self.monitor_photo = None
+        self.template_picker = None
         self.page = page
         for index in range(4):
             self.stage.rowconfigure(index, weight=0, minsize=0)
@@ -584,11 +587,14 @@ class FarmHud:
         self.log_box = None
         {'monitor': self._page_monitor, 'harvest': self._page_harvest, 'autorun': self._page_autorun,
          'settings': self._page_settings, 'dev': self._page_dev}[page]()
+        self._paint_task_state()
 
     def refresh(self):
         if self.reading:
             return
+        self.live_reads = True
         self.reading = True
+        self.previous_read_link = self.link
         self.link = '读取中'
         self.link_var.set(self.link)
         self.read_caption.set('读取中')
@@ -598,7 +604,7 @@ class FarmHud:
 
         def work():
             try:
-                self.results.put((token, read_live(self.snapshot_path), None))
+                self.results.put((token, read_live(self.snapshot_path, mode='automation'), None))
             except Exception as error:
                 self.results.put((token, None, str(error)))
 
@@ -611,7 +617,14 @@ class FarmHud:
 
     def close(self):
         self.stop_monitor()
-        self.root.destroy()
+        for line in self.task_run.poll():
+            self.log(line)
+        self.closing = True
+        self.task_run.stop()
+        if not self.task_run.active:
+            self.root.destroy()
+        else:
+            self._paint_task_state()
 
     def stop_all(self):
         if self.reading:
@@ -619,20 +632,67 @@ class FarmHud:
             # The subprocess still writes to the shared snapshot path. Drain its
             # result before allowing another read, even though this one is cancelled.
             self.read_caption.set('等待读取结束')
-            self.link = '已读取' if self.snapshot else '未读取'
+            self.link = self.previous_read_link
             self.link_var.set(self.link)
             self._paint_link()
             self.log('已取消这次读取。')
         self.apply_control('stop')
 
     def apply_control(self, action):
-        result = next_control(action, self.phase, self.current_template())
-        self.phase = result['phase']
-        self.status_var.set(result['status'])
-        self.detail_var.set(result['message'])
-        self.log(result['message'])
+        self.control_error = None
+        try:
+            if action == 'start':
+                if self.task_run.active:
+                    self.task_run.resume()
+                else:
+                    entry = self.current_template()['entry']
+                    options = task_settings.task_options(entry, self.interface)
+                    values = (option_values(self.task_option_vars, options) if self.page == 'autorun'
+                              else task_settings.editor_values(entry, catalog=self.interface)[0])
+                    task_settings.validate_options(entry, values, self.interface)
+                    task_settings.save_task(entry, values)
+                    self.task_run.start(entry, values)
+            elif action == 'pause':
+                self.task_run.pause()
+            elif action == 'stop':
+                self.task_run.stop()
+            else:
+                raise ValueError(action)
+        except (ValueError, RuntimeError, OSError) as error:
+            self.log('任务未启动：' + str(error))
+            self.control_error = str(error)
+            self.detail_var.set(str(error))
+            return
+        self._paint_task_state()
+
+    def _paint_task_state(self):
+        self.phase = self.task_run.phase
+        self.status_var.set('配置受阻' if self.control_error else PHASE_LABELS[self.phase])
+        self.detail_var.set(self.control_error or self.task_run.message)
+        if self.task_run.message != self.last_run_message:
+            self.log(self.task_run.message)
+            self.last_run_message = self.task_run.message
+        if self.template_picker is not None:
+            self.template_picker.configure(state='disabled' if self.task_run.active else 'readonly')
+        for action, button in self.control_buttons.items():
+            enabled = (not self.task_run.active or self.phase in ('paused', 'pausing')) if action == 'start' else (
+                self.task_run.active and self.phase in ('starting', 'running') if action == 'pause' else
+                self.task_run.active and self.phase != 'stopping')
+            button.configure(state='normal' if enabled and not self.closing else 'disabled',
+                             text='继续' if action == 'start' and self.phase in ('paused', 'pausing') else
+                                  {'start': '开始', 'pause': '暂停', 'stop': '结束'}[action])
 
     def poll(self):
+        previous_phase = self.phase
+        for line in self.task_run.poll():
+            self.log(line)
+        self._paint_task_state()
+        if self.closing and not self.task_run.active:
+            self.root.destroy()
+            return
+        if (self.live_reads and previous_phase in ('starting', 'running', 'pausing', 'paused', 'stopping')
+                and self.phase in ('completed', 'failed', 'stopped')):
+            self.refresh()
         try:
             token, snapshot, error = self.results.get_nowait()
         except queue.Empty:
@@ -651,7 +711,7 @@ class FarmHud:
                 self.log('读取完成。未执行游戏操作。')
             self.link_var.set(self.link)
             self._paint_link()
-            if token == self.generation:
+            if token == self.generation and self.page in ('monitor', 'harvest'):
                 self.show(self.page)
         if self.page == 'monitor' and self.monitor is not None:
             process = self.monitor.process
@@ -769,7 +829,9 @@ class FarmHud:
         label = tk.Label(border, text=text, bg=fill, fg=fg, padx=19, pady=7,
                          font=(FONT, 10), cursor='hand2')
         label.pack()
-        label.bind('<Button-1>', lambda _event, name=action: self.apply_control(name))
+        self.control_buttons[action] = label
+        label.bind('<Button-1>', lambda _event, name=action: self.apply_control(name)
+                   if str(label.cget('state')) != 'disabled' else None)
         label.bind('<Enter>', lambda _event: label.configure(bg='#2e65d3' if action == 'start' else '#f7f9fc'))
         label.bind('<Leave>', lambda _event: label.configure(bg=fill))
 
@@ -814,7 +876,8 @@ class FarmHud:
         self._card_title(right, '岗位进度', post_caption(self.snapshot))
         self._post_cards(right, post_rows(self.snapshot), 'posts')
         self._card_title(status, '农场状态')
-        self._pairs(status, farm_status(self.snapshot))
+        rows = farm_status(self.snapshot, '参见当前任务日志' if self.task_run.folder else '尚未启动任务')
+        self._pairs(status, [(key, self.link if key == '读取状态' else value) for key, value in rows])
 
     def _page_harvest(self):
         stage = self.stage
@@ -850,12 +913,15 @@ class FarmHud:
                               style='Hud.TCombobox', values=[item['label'] for item in self.templates])
         picker.grid(row=1, column=0, sticky='w', pady=(4, 10))
         picker.bind('<<ComboboxSelected>>', self._template_changed)
+        self.template_picker = picker
         area = self._card(stage, row=2, column=0, sticky='nsew', padx=(0, 12))
         self._card_title(area, '运行区域')
         chip = self.tk.Label(area, text=self.current_template()['label'], bg='#f7f9fc', fg=INK,
                              anchor='w', padx=12, pady=8, font=(FONT, 10))
         chip.pack(fill='x', padx=16, pady=(0, 8))
-        self._body(area, '\n'.join(overview_lines(self.snapshot)))
+        self.log_box = self._scroll_text(area)
+        self._fill_text(self.log_box, '\n'.join(self.log_lines))
+        self.log_box.see('end')
         config = self._card(stage, row=2, column=1, sticky='nsew')
         self._card_title(config, '脚本配置')
         self.tk.Label(config, text=self.current_template()['detail'], bg=WHITE, fg=MUTED,
@@ -953,12 +1019,7 @@ class FarmHud:
                     source = 'Maa任务配置' if imported else '默认值'
                     feedback.set(f'已改用{source}，下一次启动此任务时生效。')
                     return
-                current = {}
-                for name, variable in variables.items():
-                    kind = options[name]['type']
-                    current[name] = ([key for key, item in variable.items() if item.get()] if kind == 'checkbox'
-                                     else {key: item.get() for key, item in variable.items()} if kind == 'input'
-                                     else variable.get())
+                current = option_values(variables, options)
                 task_settings.save_task(entry, current)
                 feedback.set('已保存，下一次启动此任务时优先使用；当前运行不变。')
                 self.log(f'已保存「{entry}」任务配置。')
@@ -1170,10 +1231,14 @@ def main():
     parser.add_argument('--live', action='store_true', help='read the local cache once at startup')
     parser.add_argument('--page', choices=tuple(PAGE_TITLES), default='autorun')
     parser.add_argument('--snapshot', type=Path, default=SNAPSHOT)
+    parser.add_argument('--app-version', help='version of the requested interface instance')
     args = parser.parse_args()
     if args.launch:
-        print(json.dumps({'pid': launch_hud(args.page), 'window': TITLE, 'read_only': True}, ensure_ascii=False))
+        print(json.dumps({'pid': launch_hud(args.page), 'window': TITLE, 'auto_start': False,
+                          'task_controls': True}, ensure_ascii=False))
         return
+    if args.app_version and args.app_version != load_interface()['version']:
+        parser.error('界面版本不一致，请重新启动')
     import tkinter as tk
     set_app_identity()
     root = tk.Tk()

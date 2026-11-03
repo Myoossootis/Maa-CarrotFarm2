@@ -1,4 +1,4 @@
-"""Independent Maa entry that opens the read-only operations desk."""
+"""Compatibility Maa entry that opens the independent automation interface."""
 
 from pathlib import Path
 import sys
@@ -19,5 +19,5 @@ class OpenFarmHud(CustomAction):
         except OSError as error:
             print(f'[操作台] 启动失败：{error}', flush=True)
             return False
-        print(f'[操作台] 已打开，只读窗口 PID={pid}；没有发送游戏输入。', flush=True)
+        print(f'[自动化] 已打开主界面 PID={pid}；选择模板后点击开始运行。', flush=True)
         return True

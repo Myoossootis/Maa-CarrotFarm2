@@ -26,9 +26,9 @@ from ctypes import wintypes
 from pathlib import Path
 
 try:
-    from .task_control import check_cancelled
+    from .task_control import check_cancelled, atomic_input
 except ImportError:
-    from task_control import check_cancelled
+    from task_control import check_cancelled, atomic_input
 
 EXPECTED_WIDTH = 720
 EXPECTED_HEIGHT = 1358
@@ -205,6 +205,7 @@ def install_foreground_safe_inputs() -> bool:
     return True
 
 
+@atomic_input()
 def post_click_postmessage_only(hwnd: int, client_x: int, client_y: int) -> bool:
     """Post mouse down/up via PostMessageW only — no WM_ACTIVATE / SetForegroundWindow.
 
@@ -230,6 +231,7 @@ def post_click_postmessage_only(hwnd: int, client_x: int, client_y: int) -> bool
     return released
 
 
+@atomic_input()
 def post_click_normalized(controller, x: int, y: int):
     """Click in screenshot/template coordinates without stealing foreground.
 
@@ -269,6 +271,7 @@ def post_click_normalized(controller, x: int, y: int):
     return _ClickJob(ok)
 
 
+@atomic_input()
 def post_swipe_postmessage_only(hwnd: int, start: tuple[int, int], end: tuple[int, int], duration_ms: int) -> bool:
     """Drag only the render child; always release on stop or input failure."""
     user32 = ctypes.WinDLL("user32", use_last_error=True)
@@ -296,6 +299,7 @@ def post_swipe_postmessage_only(hwnd: int, start: tuple[int, int], end: tuple[in
     return released
 
 
+@atomic_input()
 def post_swipe_normalized(controller, x1: int, y1: int, x2: int, y2: int, duration_ms: int):
     install_foreground_safe_inputs()
     check_cancelled()

@@ -70,9 +70,10 @@ class InterfaceDailyTasksTests(unittest.TestCase):
         self.assertIn("RunDailyTakeoutOrders", src)
         self.assertIn("RunDailyNormalOrders", src)
 
-    def test_welcome_mentions_monitor_preview(self):
-        self.assertIn("监控在右", self.iface["welcome"])
-        self.assertIn("操作台", self.iface["welcome"])
+    def test_welcome_describes_primary_controls_without_legacy_task_list(self):
+        for label in ('萝卜家园自动化', '开始', '暂停', '结束', '不会自动运行'):
+            self.assertIn(label, self.iface['welcome'])
+        self.assertNotIn('任务列表', self.iface['welcome'])
 
 
 class RunDailyOrdersActionTests(unittest.TestCase):

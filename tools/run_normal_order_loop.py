@@ -13,7 +13,7 @@ try:
     from .run_short_cycle import run_script, COMPLETION
     from .runtime_state import write_json
     from .task_control import check_cancelled, TaskCancelled
-    from .ui_worker import cycle_lock
+    from .ui_worker import workflow_lock as cycle_lock
 except ImportError:
     import normal_order_delivery as delivery
     import employee_operation as employees
@@ -21,7 +21,7 @@ except ImportError:
     from run_short_cycle import run_script, COMPLETION
     from runtime_state import write_json
     from task_control import check_cancelled, TaskCancelled
-    from ui_worker import cycle_lock
+    from ui_worker import workflow_lock as cycle_lock
 
 from agent.order_preferences import validate_allowed_products
 

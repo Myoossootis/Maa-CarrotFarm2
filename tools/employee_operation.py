@@ -95,9 +95,11 @@ def job_path(record, slot):
 def begin_edit(record, slot, items, data):
     path = job_path(record, slot)
     previous = read(path)
-    if previous:
+    if previous and previous.get('status') != 'aborted_before_save':
         return reconcile_save(record, slot, data)
     identity = owner(slot, data)
+    if previous and (previous.get('owner') != identity or previous.get('unsaved_edit_closed') is not True):
+        raise decoded.DecodeError('Unverified discarded edit; no new editor input')
     blocker = decoded.assignment_blocker(slot, data)
     if blocker or data['employees']['repeatEnabled'] is not False:
         raise decoded.DecodeError(f'{slot}: production/repeat mode is busy or unconfirmed: {blocker}')
@@ -107,6 +109,31 @@ def begin_edit(record, slot, items, data):
     entry = dict(status='editing', slot_id=slot, items=items, owner=identity,
                  package_version=data['packageVersion'],
                  assignment_id=record['assignment_id'], automatic_retry_allowed=False)
+    if previous:
+        entry['discarded_edit_evidence'] = previous['discarded_edit_evidence']
+    write_json(path, entry)
+    return entry
+
+
+def retire_unsaved_edit(record, slot, data, *, ui_closed=False):
+    """A recorded edit with NO save intent may be discarded after positive checks.
+
+    The caller must first close the recognized editor and verify map navigation.
+    Save intents, saved plans and claims remain on the original no-replay path.
+    """
+    path = job_path(record, slot)
+    entry = read(path)
+    if (ui_closed is not True or not entry or entry.get('status') != 'editing'
+            or entry.get('owner') != owner(slot, data)
+            or decoded.assignment_blocker(slot, data)
+            or data['employees']['repeatEnabled'] is not False
+            or collection_record(record, slot) is not None):
+        raise decoded.DecodeError('Unsaved edit cannot be positively discarded; preserve record')
+    evidence = Path(record['operation_dir']) / 'discarded_edits' / (slot + '_' + uuid4().hex + '.json')
+    write_json(evidence, dict(entry=entry, closed_ui=True, captured_at=data['capturedAt'],
+                             storage_sequence=data.get('storageSequence')))
+    entry.update(status='aborted_before_save', unsaved_edit_closed=True,
+                 discarded_edit_evidence=str(evidence))
     write_json(path, entry)
     return entry
 
@@ -116,6 +143,8 @@ def reserve_save(record, slot, data):
     entry = read(path)
     if not entry or entry['status'] != 'editing' or owner(slot, data) != entry['owner']:
         raise decoded.DecodeError('Save identity changed; no save input')
+    if record['allocation'].get('bound_target'):
+        validate_target(record['allocation'], data)
     if decoded.assignment_blocker(slot, data) or data['employees']['repeatEnabled'] is not False:
         raise decoded.DecodeError('Production changed while editing; no save input')
     entry.update(status='save_intent')
