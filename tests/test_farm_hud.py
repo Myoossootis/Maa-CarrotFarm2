@@ -256,15 +256,16 @@ class FarmHudWindowTests(unittest.TestCase):
     def test_order_cards_use_three_columns(self):
         import tkinter as tk
         orders = [{'category': 'normal', 'slot': index, 'statusCode': 1,
-                   'costs': [{'name': '苹果', 'count': 1}]} for index in range(1, 5)]
+                   'costs': [{'name': name, 'count': index} for name in
+                             ['苹果', '玉米', '甘蔗'][:count]]}
+                  for index, count in enumerate((1, 3, 2, 1), start=1)]
         root = tk.Tk()
-        root.withdraw()
+        root.attributes('-alpha', 0)
         try:
             desk = farm_hud.FarmHud(root, interface=farm_hud.load_interface(), load_cache=False,
                                      capture_frames=False, snapshot={'orders': orders, 'inventory': {'products': []},
                                                                     'employees': {'plans': []}})
             desk.show('harvest')
-            root.update_idletasks()
             found = {}
 
             def walk(widget):
@@ -274,13 +275,21 @@ class FarmHudWindowTests(unittest.TestCase):
                     text = ''
                 if text in ('普通 2', '普通 4'):
                     found[text] = widget.master.grid_info()
+                if text in ('普通 1', '普通 2', '普通 3'):
+                    found[text + ' bounds'] = (widget.master.winfo_y(), widget.master.winfo_height())
                 for child in widget.winfo_children():
                     walk(child)
 
-            walk(desk.root)
-            self.assertEqual(found['普通 2']['column'], 1)
-            self.assertEqual(found['普通 4']['column'], 0)
-            self.assertEqual(found['普通 4']['row'], 1)
+            for width in (1360, 1100):
+                with self.subTest(width=width):
+                    root.geometry(f'{width}x820')
+                    root.update_idletasks()
+                    walk(desk.root)
+                    self.assertEqual(found['普通 2']['column'], 1)
+                    self.assertEqual(found['普通 4']['column'], 0)
+                    self.assertEqual(found['普通 4']['row'], 1)
+                    self.assertEqual(found['普通 1 bounds'], found['普通 2 bounds'])
+                    self.assertEqual(found['普通 2 bounds'], found['普通 3 bounds'])
         finally:
             root.destroy()
 

@@ -28,15 +28,15 @@ TITLE = '萝卜家园 · 操作台'
 MONITOR_FRAME = ROOT / '.tmp/maa_monitor/live.png'
 CAPTURE_SCRIPT = ROOT / 'tools/capture_current_frame_with_maa.py'
 FONT = 'Microsoft YaHei UI'
-BG = '#f3f5f8'
+BG = '#f3f6fb'
 WHITE = '#ffffff'
-INK = '#1c2430'
-MUTED = '#8b93a1'
+INK = '#233047'
+MUTED = '#718096'
 NAV = '#4a5568'
 NAV_BG = '#e8f1ff'
 NAV_FG = '#2f6bff'
-LINE = '#e6e9ef'
-BLUE = '#3d7eff'
+LINE = '#e3e9f2'
+BLUE = '#3974e8'
 STOP = '#e15b6a'
 
 PAGES = (
@@ -663,7 +663,7 @@ class FarmHud:
 
     def _build_shell(self):
         tk = self.tk
-        sidebar = tk.Frame(self.root, bg=WHITE, width=208)
+        sidebar = tk.Frame(self.root, bg=WHITE, width=212)
         sidebar.pack(side='left', fill='y')
         sidebar.pack_propagate(False)
         bottom = tk.Frame(sidebar, bg=WHITE)
@@ -671,7 +671,7 @@ class FarmHud:
         identity = tk.Frame(sidebar, bg=WHITE)
         identity.pack(side='top', fill='x', padx=18, pady=(22, 12))
         tk.Label(identity, text='萝卜家园', bg=WHITE, fg=INK, anchor='w',
-                 font=(FONT, 16, 'bold')).pack(fill='x')
+                 font=(FONT, 18, 'bold')).pack(fill='x')
         tk.Label(identity, text=self.interface.get('version', ''), bg=WHITE, fg=MUTED, anchor='w',
                  font=(FONT, 9)).pack(fill='x', pady=(2, 0))
         for key, title in PAGES:
@@ -703,9 +703,9 @@ class FarmHud:
         main = tk.Frame(self.root, bg=BG)
         main.pack(side='left', fill='both', expand=True)
         header = tk.Frame(main, bg=BG)
-        header.pack(fill='x', padx=22, pady=(18, 10))
+        header.pack(fill='x', padx=22, pady=(24, 16))
         self.title_var = tk.StringVar()
-        tk.Label(header, textvariable=self.title_var, bg=BG, fg=INK, font=(FONT, 16, 'bold')).pack(side='left')
+        tk.Label(header, textvariable=self.title_var, bg=BG, fg=INK, font=(FONT, 18, 'bold')).pack(side='left')
         self.controls = tk.Frame(header, bg=BG)
         for action, text in (('stop', '结束'), ('pause', '暂停'), ('start', '开始')):
             self._ghost(self.controls, text, action)
@@ -742,14 +742,16 @@ class FarmHud:
 
     def _ghost(self, parent, text, action):
         tk = self.tk
-        border = tk.Frame(parent, bg='#d7dde6', padx=1, pady=1)
+        fill = BLUE if action == 'start' else WHITE
+        fg = WHITE if action == 'start' else STOP if action == 'stop' else NAV
+        border = tk.Frame(parent, bg=BLUE if action == 'start' else LINE, padx=1, pady=1)
         border.pack(side='right', padx=(8, 0))
-        label = tk.Label(border, text=text, bg=WHITE, fg='#323b48', padx=16, pady=6,
+        label = tk.Label(border, text=text, bg=fill, fg=fg, padx=19, pady=7,
                          font=(FONT, 10), cursor='hand2')
         label.pack()
         label.bind('<Button-1>', lambda _event, name=action: self.apply_control(name))
-        label.bind('<Enter>', lambda _event: label.configure(bg='#f7f8fb'))
-        label.bind('<Leave>', lambda _event: label.configure(bg=WHITE))
+        label.bind('<Enter>', lambda _event: label.configure(bg='#2e65d3' if action == 'start' else '#f7f9fc'))
+        label.bind('<Leave>', lambda _event: label.configure(bg=fill))
 
     def _card(self, parent, **grid):
         card = self.tk.Frame(parent, bg=WHITE, highlightbackground=LINE, highlightthickness=1)
@@ -769,11 +771,11 @@ class FarmHud:
         pane = self.tk.PanedWindow(left, orient='vertical', sashwidth=8, sashrelief='flat',
                                    bg=LINE, opaqueresize=True, bd=0)
         pane.pack(fill='both', expand=True, padx=8, pady=(0, 8))
-        screen_holder = self.tk.Frame(pane, bg='#f7f8fb', width=250, height=250)
+        screen_holder = self.tk.Frame(pane, bg='#f7f9fc', width=250, height=250)
         log_holder = self.tk.Frame(pane, bg=WHITE)
         pane.add(screen_holder, stretch='never', minsize=180, height=250)
         pane.add(log_holder, stretch='always', minsize=120)
-        self.screen_label = self.tk.Label(screen_holder, bg='#f7f8fb', fg=MUTED, text='正在截取游戏画面…',
+        self.screen_label = self.tk.Label(screen_holder, bg='#f7f9fc', fg=MUTED, text='正在截取游戏画面…',
                                           font=(FONT, 10))
         self.screen_label.pack(fill='both', expand=True)
         header = self.tk.Frame(log_holder, bg=WHITE)
@@ -830,7 +832,7 @@ class FarmHud:
         picker.bind('<<ComboboxSelected>>', self._template_changed)
         area = self._card(stage, row=2, column=0, sticky='nsew', padx=(0, 12))
         self._card_title(area, '运行区域')
-        chip = self.tk.Label(area, text=self.current_template()['label'], bg='#f7f8fb', fg=INK,
+        chip = self.tk.Label(area, text=self.current_template()['label'], bg='#f7f9fc', fg=INK,
                              anchor='w', padx=12, pady=8, font=(FONT, 10))
         chip.pack(fill='x', padx=16, pady=(0, 8))
         self._body(area, '\n'.join(overview_lines(self.snapshot)))
@@ -842,7 +844,7 @@ class FarmHud:
         self.tk.Label(config, text='处理状态', bg=WHITE, fg=MUTED, anchor='w',
                       font=(FONT, 9)).pack(fill='x', padx=16, pady=(16, 2))
         self.tk.Label(config, textvariable=self.status_var, bg=WHITE, fg=INK, anchor='w',
-                      font=(FONT, 12, 'bold')).pack(fill='x', padx=16)
+                      font=(FONT, 11, 'bold')).pack(fill='x', padx=16)
         self.tk.Label(config, textvariable=self.detail_var, bg=WHITE, fg=NAV, anchor='w',
                       justify='left', wraplength=300, font=(FONT, 10)).pack(fill='x', padx=16, pady=(6, 16))
 
@@ -909,14 +911,14 @@ class FarmHud:
             self._use_columns(inner, columns)
             for index, row in enumerate(rows):
                 card = self.tk.Frame(inner, bg=WHITE, highlightbackground=LINE, highlightthickness=1)
-                card.grid(row=index // columns, column=index % columns, sticky='new', padx=2, pady=2)
+                card.grid(row=index // columns, column=index % columns, sticky='nsew', padx=4, pady=4)
                 self.tk.Label(card, text=row['title'], bg=WHITE, fg=INK, anchor='w',
-                              font=(FONT, 9, 'bold')).pack(fill='x', padx=6, pady=(4, 0))
-                materials = self.tk.Label(card, text=row['materials'], bg=WHITE, fg=NAV, anchor='w',
-                                          justify='left', font=(FONT, 8))
-                materials.pack(fill='x', padx=6, pady=(0, 4))
+                              font=(FONT, 10, 'bold')).pack(fill='x', padx=10, pady=(9, 3))
+                materials = self.tk.Label(card, text=row['materials'].replace('、', '\n'), bg=WHITE, fg=NAV, anchor='w',
+                                          justify='left', font=(FONT, 9), wraplength=96)
+                materials.pack(fill='x', padx=10, pady=(0, 9))
                 card.bind('<Configure>', lambda event, label=materials: label.configure(
-                    wraplength=max(72, event.width - 12)))
+                    wraplength=max(64, event.width - 24)))
         bind_wheel(inner)
 
     def _inventory_cards(self, parent, rows):
@@ -928,10 +930,10 @@ class FarmHud:
         else:
             self._use_columns(inner, columns)
             for index, row in enumerate(rows):
-                card = self.tk.Frame(inner, bg='#f7f8fb', highlightbackground=LINE, highlightthickness=1)
-                card.grid(row=index // columns, column=index % columns, sticky='new', padx=2, pady=2)
-                self.tk.Label(card, text=f"{row['name']}  ×{row['count']}", bg='#f7f8fb', fg=INK, anchor='w',
-                              font=(FONT, 9)).pack(fill='x', padx=6, pady=3)
+                card = self.tk.Frame(inner, bg='#f7f9fc', highlightbackground=LINE, highlightthickness=1)
+                card.grid(row=index // columns, column=index % columns, sticky='nsew', padx=4, pady=4)
+                self.tk.Label(card, text=f"{row['name']}  ×{row['count']}", bg='#f7f9fc', fg=INK, anchor='w',
+                              font=(FONT, 9)).pack(fill='x', padx=9, pady=7)
         bind_wheel(inner)
 
     def _post_cards(self, parent, rows, layout='posts'):
@@ -943,21 +945,21 @@ class FarmHud:
         else:
             self._use_columns(inner, columns)
             for index, row in enumerate(rows):
-                card = self.tk.Frame(inner, bg='#f7f8fb', highlightbackground=LINE, highlightthickness=1)
-                card.grid(row=index // columns, column=index % columns, sticky='new', padx=2, pady=2)
-                self.tk.Label(card, text=row['title'], bg='#f7f8fb', fg=INK, anchor='w',
-                              font=(FONT, 9, 'bold')).pack(fill='x', padx=6, pady=(4, 1))
+                card = self.tk.Frame(inner, bg='#f7f9fc', highlightbackground=LINE, highlightthickness=1)
+                card.grid(row=index // columns, column=index % columns, sticky='nsew', padx=4, pady=4)
+                self.tk.Label(card, text=row['title'], bg='#f7f9fc', fg=INK, anchor='w',
+                              font=(FONT, 10, 'bold')).pack(fill='x', padx=10, pady=(9, 4))
                 for label, value in (('计划', row['plan']), ('进度', row['progress']), ('完成', row['finish'])):
-                    line = self.tk.Frame(card, bg='#f7f8fb')
-                    line.pack(fill='x', padx=6)
-                    self.tk.Label(line, text=label, bg='#f7f8fb', fg=MUTED, anchor='w',
-                                  font=(FONT, 8)).pack(side='left')
-                    detail = self.tk.Label(line, text=value, bg='#f7f8fb', fg=INK, anchor='w', justify='left',
-                                           font=(FONT, 8))
+                    line = self.tk.Frame(card, bg='#f7f9fc')
+                    line.pack(fill='x', padx=10)
+                    self.tk.Label(line, text=label, bg='#f7f9fc', fg=MUTED, anchor='w',
+                                  font=(FONT, 9)).pack(side='left')
+                    detail = self.tk.Label(line, text=value, bg='#f7f9fc', fg=INK, anchor='w', justify='left',
+                                           font=(FONT, 9))
                     detail.pack(side='left', fill='x', expand=True, padx=(4, 0))
                     card.bind('<Configure>', lambda event, item=detail: item.configure(
                         wraplength=max(64, event.width - 52)), add='+')
-                self.tk.Frame(card, bg='#f7f8fb', height=3).pack()
+                self.tk.Frame(card, bg='#f7f9fc', height=3).pack()
         bind_wheel(inner)
 
     def _use_columns(self, inner, columns):
@@ -966,8 +968,8 @@ class FarmHud:
 
     def _card_title(self, card, title, caption=''):
         row = self.tk.Frame(card, bg=WHITE)
-        row.pack(fill='x', padx=16, pady=(14, 8))
-        self.tk.Label(row, text=title, bg=WHITE, fg=INK, font=(FONT, 12, 'bold')).pack(side='left')
+        row.pack(fill='x', padx=16, pady=(17, 12))
+        self.tk.Label(row, text=title, bg=WHITE, fg=INK, font=(FONT, 11, 'bold')).pack(side='left')
         if caption:
             self.tk.Label(row, text=caption, bg=WHITE, fg=MUTED, font=(FONT, 9)).pack(side='right')
 
