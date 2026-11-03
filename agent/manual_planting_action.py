@@ -5,6 +5,11 @@ import sys
 
 from maa.custom_action import CustomAction
 
+try:
+    from .task_settings import action_values
+except ImportError:
+    from task_settings import action_values
+
 
 def request_from_node(node, parameters):
     if not isinstance(node, dict) or not isinstance(parameters, dict) or not isinstance(node.get('attach', {}), dict):
@@ -32,8 +37,8 @@ class ManualPlantingPreflight(CustomAction):
         from tools.manual_planting import save_preflight
         from tools.decoded_dashboard import launch_dashboard
         try:
-            parameters = json.loads(argv.custom_action_param or '{}')
-            request = request_from_node(context.get_node_data(argv.node_name) or {}, parameters)
+            parameters, node = action_values(context, argv)
+            request = request_from_node(node, parameters)
             result = save_preflight(**request)
             if context.tasker.stopping:
                 return False
@@ -52,9 +57,9 @@ class ManualPlantingOnce(CustomAction):
         if context.tasker.stopping:
             return False
         try:
-            parameters = json.loads(argv.custom_action_param or '{}')
-            request = request_from_node(context.get_node_data(argv.node_name) or {}, parameters)
-        except (ValueError, TypeError, KeyError) as error:
+            parameters, node = action_values(context, argv)
+            request = request_from_node(node, parameters)
+        except (ValueError, TypeError, KeyError, OSError) as error:
             print(f'[单次手动种植] 参数错误：{error}；未发送游戏输入。', flush=True)
             return False
         try:

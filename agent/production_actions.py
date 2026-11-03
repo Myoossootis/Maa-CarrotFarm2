@@ -8,10 +8,12 @@ try:
     from .production_start import confirm_cycle_start, wait_for_background_ready
     from .cycle_bridge import run_cycle_worker
     from .order_preferences import allowed_products_from_node
+    from .task_settings import action_values
 except ImportError:
     from production_start import confirm_cycle_start, wait_for_background_ready
     from cycle_bridge import run_cycle_worker
     from order_preferences import allowed_products_from_node
+    from task_settings import action_values
 
 
 class ConfirmProductionCycleStart(CustomAction):
@@ -47,8 +49,7 @@ class EnterRestaurant(CustomAction):
 class RefreshOrder(CustomAction):
     def run(self, context, argv) -> bool:
         try:
-            parameters = json.loads(argv.custom_action_param or '{}')
-            node = context.get_node_data(argv.node_name) or {}
+            parameters, node = action_values(context, argv)
             order_type = node.get('attach', {}).get('refresh_order_type', parameters.get('order_type', 'party'))
             number = parameters.get('order_number', 1)
             if order_type not in {'party', 'takeout', 'normal'} or type(number) is not int or not 1 <= number <= 9:
@@ -151,13 +152,16 @@ class VerifySlotWorkPlan(CustomAction):
 
 class RunShortCycle(CustomAction):
     def run(self, context, argv) -> bool:
-        parameters = json.loads(argv.custom_action_param or '{}')
+        try:
+            parameters, node = action_values(context, argv)
+        except (ValueError, TypeError, OSError) as error:
+            print(f'[错误] {error}；未启动。', flush=True)
+            return False
         rounds = parameters.get('rounds', 1)
         poll = parameters.get('poll_seconds', 20)
         timeout = parameters.get('timeout_seconds', 900)
         # Maa replaces custom_action_param as one object. Keep the UI mode in
         # independent node metadata so numeric input overrides cannot erase it.
-        node = context.get_node_data(argv.node_name) or {}
         apply = node.get('attach', {}).get('ui_apply', False)
         if (type(rounds) is not int or not 1 <= rounds <= 20 or type(poll) is not int
                 or not 5 <= poll <= 300 or type(timeout) is not int or not poll <= timeout <= 7200
@@ -184,7 +188,11 @@ class RunShortCycle(CustomAction):
 
 class RunFeedProduction(CustomAction):
     def run(self, context, argv) -> bool:
-        parameters = json.loads(argv.custom_action_param or '{}')
+        try:
+            parameters, _node = action_values(context, argv)
+        except (ValueError, TypeError, OSError) as error:
+            print(f'[错误] {error}；未启动。', flush=True)
+            return False
         maximum = parameters.get('max_feed', 120)
         poll = parameters.get('poll_seconds', 60)
         if (type(maximum) is not int or not 1 <= maximum <= 99999
@@ -202,13 +210,16 @@ class RunDailyOrders(CustomAction):
     """Daily batch scheduler and individual order entries; normal has no quota."""
 
     def run(self, context, argv) -> bool:
-        parameters = json.loads(argv.custom_action_param or "{}")
+        try:
+            parameters, node = action_values(context, argv)
+        except (ValueError, TypeError, OSError) as error:
+            print(f'[错误] {error}；未启动。', flush=True)
+            return False
         order_type = parameters.get("order_type") or "normal"
         continuous = parameters.get('continuous', False)
         maximum = parameters.get('max_orders', 0)
         poll = parameters.get("poll_seconds", 20)
         timeout = parameters.get("timeout_seconds", 900)
-        node = context.get_node_data(argv.node_name) or {}
         apply = node.get("attach", {}).get("ui_apply", True)
         if (type(continuous) is not bool or type(maximum) is not int or not 0 <= maximum <= 999
                 or continuous and order_type != 'normal'):

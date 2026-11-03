@@ -1,6 +1,7 @@
 """Configure a local MFAAvalonia folder to use this project's isolated runtime."""
 
 import argparse
+from copy import deepcopy
 import importlib.metadata
 import json
 from pathlib import Path
@@ -43,7 +44,17 @@ def _sync_instance_task_items(ui_dir, interface):
         current_tasks.append(f"{task['name']}<|||>{task['entry']}")
     for path in instances.glob('*.json'):
         data = json.loads(path.read_text(encoding='utf-8'))
-        data['TaskItems'] = task_items
+        previous = {item.get('entry'): item for item in data.get('TaskItems', [])}
+        updated = deepcopy(task_items)
+        for task in updated:
+            old_options = {option.get('name'): option for option in
+                           previous.get(task['entry'], {}).get('option', [])}
+            for option in task.get('option', []):
+                old = old_options.get(option['name'], {})
+                for key in ('index', 'selected_cases', 'data'):
+                    if key in old:
+                        option[key] = deepcopy(old[key])
+        data['TaskItems'] = updated
         data['CurrentTasks'] = current_tasks
         if interface.get('controller'):
             data['CurrentControllerName'] = interface['controller'][0]['name']
@@ -140,7 +151,7 @@ def prepare(ui_dir):
         'VerifyField2WorkPlanBackground', 'VerifyField3WorkPlanBackground',
         'VerifyRanch1WorkPlanBackground', 'VerifyRanch2WorkPlanBackground',
         'VerifyOrchard1WorkPlanBackground', 'VerifyOrchard2WorkPlanBackground',
-        'RunShortCycle', 'RecognizeClockStart',
+        'RunShortCyclePreview', 'RunShortCycleApply', 'RunShortCycle', 'RecognizeClockStart',
     }
     order = {
         'OpenFarmHud': -2,
@@ -159,6 +170,7 @@ def prepare(ui_dir):
         'VerifyField2WorkPlanBackground': 15, 'VerifyField3WorkPlanBackground': 16,
         'VerifyRanch1WorkPlanBackground': 17, 'VerifyRanch2WorkPlanBackground': 18,
         'VerifyOrchard1WorkPlanBackground': 19, 'VerifyOrchard2WorkPlanBackground': 20,
+        'RunShortCyclePreview': 20.8, 'RunShortCycleApply': 20.9,
         'RunShortCycle': 21, 'RecognizeClockStart': 22,
         'RunFeedProduction': 100,
     }
