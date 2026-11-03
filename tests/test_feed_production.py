@@ -403,8 +403,9 @@ class FeedIntegrationTests(unittest.TestCase):
                 obj.__del__();obj._handle=None
 
     def test_maa_action_forwards_validated_settings_and_respects_stop(self):
-        context = SimpleNamespace(tasker=SimpleNamespace(stopping=False))
-        argv = SimpleNamespace(custom_action_param=json.dumps(dict(max_feed=240, poll_seconds=90)))
+        context = SimpleNamespace(tasker=SimpleNamespace(stopping=False), get_node_data=lambda _: {})
+        argv = SimpleNamespace(node_name='RunFeedProduction',
+                               custom_action_param=json.dumps(dict(max_feed=240, poll_seconds=90)))
         with patch.object(production_actions,'wait_for_background_ready',return_value=True), patch.object(production_actions,'run_cycle_worker',return_value=True) as worker:
             self.assertTrue(production_actions.RunFeedProduction().run(context,argv))
             self.assertEqual(worker.call_args.args[0],['--max-feed','240','--poll-seconds','90'])

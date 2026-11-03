@@ -1,6 +1,6 @@
-"""Read-only operations desk modeled on a sidebar HUD.
+"""Operations desk with local task settings, modeled on a sidebar HUD.
 
-The window shows monitor, orders, run templates, settings, and diagnostics.
+The window shows monitor, orders, run templates, local settings, and diagnostics.
 It never imports a game controller and never sends input.
 """
 
@@ -17,14 +17,19 @@ import subprocess
 import sys
 import threading
 
+ROOT = Path(__file__).resolve().parents[1]
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
+from agent import task_settings
+
 try:
     from .decoded_dashboard import SNAPSHOT, local_time, read_live
 except ImportError:
     from decoded_dashboard import SNAPSHOT, local_time, read_live
 
 
-ROOT = Path(__file__).resolve().parents[1]
-TITLE = '萝卜家园 · 操作台'
+TITLE = '萝卜家园自动化'
+APP_ID = 'Myoossootis.CarrotFarm2.Automation'
 MONITOR_FRAME = ROOT / '.tmp/maa_monitor/live.png'
 CAPTURE_SCRIPT = ROOT / 'tools/capture_current_frame_with_maa.py'
 FONT = 'Microsoft YaHei UI'
@@ -69,6 +74,12 @@ TEMPLATE_META = (
          detail='只检查空位、等级和消耗。预检通过也不种植。'),
     dict(entry='RunFeedProduction', label='饲料生产（农田3）', kind='饲料', loop='直到停止',
          detail='占用农田3做饲料。放到任务队列最后，点停止才结束。'),
+    dict(entry='RunShortCyclePreview', label='单订单扫描与排产预览', kind='高级周期', loop='按设置轮数',
+         detail='只预览单订单扫描与排产计划。'),
+    dict(entry='RunShortCycleApply', label='单订单补产交单', kind='高级周期', loop='按设置轮数',
+         detail='正式单订单补产交单。保留原有执行前确认。'),
+    dict(entry='RunShortCycle', label='单订单补产与交单（高级）', kind='高级周期', loop='按设置轮数',
+         detail='可选择仅预览或正式执行，并设置轮数、间隔和超时。'),
 )
 LINK_COLOR = {'未读取': '#9aa3af', '读取中': BLUE, '已读取': '#1f9d55', '读取失败': STOP}
 
@@ -436,6 +447,14 @@ def stamp():
     return now.strftime('%H:%M:%S.') + f'{now.microsecond // 1000:03d}'
 
 
+def set_app_identity():
+    if sys.platform == 'win32':
+        import ctypes
+        result = ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(APP_ID)
+        if result:
+            raise OSError(f'Cannot set application identity: {result}')
+
+
 def launch_hud(page='autorun'):
     """Spawn only this window. Used by the Maa custom action and the CLI."""
     if page not in PAGE_TITLES:
@@ -509,6 +528,7 @@ class FarmHud:
         if icon.exists():
             try:
                 root.iconbitmap(str(icon))
+                root.iconbitmap(default=str(icon))
             except tk.TclError:
                 pass
         style = ttk.Style(root)
@@ -840,13 +860,118 @@ class FarmHud:
         self._card_title(config, '脚本配置')
         self.tk.Label(config, text=self.current_template()['detail'], bg=WHITE, fg=MUTED,
                       anchor='w', justify='left', wraplength=300, font=(FONT, 10)).pack(fill='x', padx=16, pady=(0, 12))
-        self._pairs(config, config_rows(self.current_template()))
+        self._pairs(config, [row for row in config_rows(self.current_template()) if row[0] != '循环次数'])
         self.tk.Label(config, text='处理状态', bg=WHITE, fg=MUTED, anchor='w',
                       font=(FONT, 9)).pack(fill='x', padx=16, pady=(16, 2))
         self.tk.Label(config, textvariable=self.status_var, bg=WHITE, fg=INK, anchor='w',
                       font=(FONT, 11, 'bold')).pack(fill='x', padx=16)
         self.tk.Label(config, textvariable=self.detail_var, bg=WHITE, fg=NAV, anchor='w',
                       justify='left', wraplength=300, font=(FONT, 10)).pack(fill='x', padx=16, pady=(6, 16))
+        self.task_option_vars = self._option_editor(config, self.current_template()['entry'])
+
+    def _option_editor(self, parent, entry):
+        from tkinter import ttk
+        options = task_settings.task_options(entry, self.interface)
+        if not options:
+            self.tk.Label(parent, text='此模板没有可调整参数。', bg=WHITE, fg=MUTED,
+                          font=(FONT, 10)).pack(anchor='w', padx=16, pady=12)
+            return {}
+        feedback = self.tk.StringVar()
+        try:
+            values, source = task_settings.editor_values(entry, catalog=self.interface)
+            feedback.set(f'来源：{source}。保存后用于下一次启动此任务。')
+        except ValueError as error:
+            values = {name: task_settings.option_default(option) for name, option in options.items()}
+            feedback.set(str(error) + '；显示默认值，尚未保存。')
+        footer = self.tk.Frame(parent, bg=WHITE)
+        footer.pack(side='bottom', fill='x', padx=16, pady=(6, 12))
+        self.tk.Label(footer, textvariable=feedback, bg=WHITE, fg=NAV, anchor='w', justify='left',
+                      wraplength=300, font=(FONT, 9)).pack(fill='x', pady=(0, 6))
+        buttons = self.tk.Frame(footer, bg=WHITE)
+        buttons.pack(fill='x')
+        inner, bind_wheel = self._scroller(parent)
+        variables = {}
+        for name, option in options.items():
+            section = self.tk.Frame(inner, bg=WHITE)
+            section.pack(fill='x', padx=8, pady=(8, 10))
+            self.tk.Label(section, text=name, bg=WHITE, fg=INK, anchor='w',
+                          font=(FONT, 10, 'bold')).pack(fill='x', pady=(0, 6))
+            if option.get('description'):
+                self.tk.Label(section, text=option['description'], bg=WHITE, fg=MUTED, justify='left',
+                              anchor='w', wraplength=284, font=(FONT, 9)).pack(fill='x', pady=(0, 6))
+            if option['type'] == 'checkbox':
+                grid = self.tk.Frame(section, bg=WHITE)
+                grid.pack(fill='x')
+                variables[name] = {}
+                for column in range(2):
+                    grid.columnconfigure(column, weight=1, uniform='choices')
+                for index, case in enumerate(option['cases']):
+                    variable = self.tk.BooleanVar(value=case['name'] in values[name])
+                    variables[name][case['name']] = variable
+                    self.tk.Checkbutton(grid, text=case.get('label', case['name']), variable=variable,
+                                        bg=WHITE, fg=INK, activebackground=WHITE, selectcolor=WHITE,
+                                        font=(FONT, 10), anchor='w').grid(
+                                            row=index // 2, column=index % 2, sticky='ew', pady=2)
+            elif option['type'] == 'select':
+                variable = self.tk.StringVar(value=values[name])
+                variables[name] = variable
+                ttk.Combobox(section, textvariable=variable, state='readonly', style='Hud.TCombobox',
+                             values=[case['name'] for case in option['cases']]).pack(fill='x')
+            else:
+                variables[name] = {}
+                for item in option['inputs']:
+                    self.tk.Label(section, text=item.get('label', item['name']), bg=WHITE, fg=NAV,
+                                  anchor='w', justify='left', wraplength=284,
+                                  font=(FONT, 9)).pack(fill='x', pady=(4, 2))
+                    variable = self.tk.StringVar(value=values[name][item['name']])
+                    variables[name][item['name']] = variable
+                    ttk.Entry(section, textvariable=variable).pack(fill='x', pady=(0, 4))
+
+        def fill(changes):
+            for name, value in changes.items():
+                if options[name]['type'] == 'checkbox':
+                    for case, variable in variables[name].items():
+                        variable.set(case in value)
+                elif options[name]['type'] == 'input':
+                    for key, variable in variables[name].items():
+                        variable.set(value[key])
+                else:
+                    variables[name].set(value)
+
+        def apply(action):
+            try:
+                if action == 'defaults':
+                    fill({name: task_settings.option_default(option) for name, option in options.items()})
+                    feedback.set('已填入默认值，点击保存后生效。')
+                    return
+                if action == 'maa':
+                    current = {name: task_settings.option_default(option) for name, option in options.items()}
+                    imported = task_settings.maa_settings(catalog=self.interface).get(entry, {})
+                    current.update(imported)
+                    task_settings.save_task(entry, {})
+                    fill(current)
+                    source = 'Maa任务配置' if imported else '默认值'
+                    feedback.set(f'已改用{source}，下一次启动此任务时生效。')
+                    return
+                current = {}
+                for name, variable in variables.items():
+                    kind = options[name]['type']
+                    current[name] = ([key for key, item in variable.items() if item.get()] if kind == 'checkbox'
+                                     else {key: item.get() for key, item in variable.items()} if kind == 'input'
+                                     else variable.get())
+                task_settings.save_task(entry, current)
+                feedback.set('已保存，下一次启动此任务时优先使用；当前运行不变。')
+                self.log(f'已保存「{entry}」任务配置。')
+            except (ValueError, OSError) as error:
+                feedback.set(f'未保存：{error}')
+
+        for index, (label, action) in enumerate((('保存配置', 'save'), ('恢复默认', 'defaults'), ('改用Maa选项', 'maa'))):
+            ttk.Button(buttons, text=label, command=lambda value=action: apply(value)).grid(
+                row=index // 2, column=index % 2, sticky='ew', padx=(0, 6), pady=3)
+        buttons.columnconfigure(0, weight=1)
+        buttons.columnconfigure(1, weight=1)
+        bind_wheel(inner)
+        return variables
 
     def _template_changed(self, _event=None):
         label = self.template_var.get()
@@ -857,10 +982,30 @@ class FarmHud:
         self.show('autorun')
 
     def _page_settings(self):
+        from tkinter import ttk
         card = self.tk.Frame(self.stage, bg=WHITE, highlightbackground=LINE, highlightthickness=1)
         card.pack(fill='both', expand=True)
         self._card_title(card, '运行约定')
-        self._body(card, '\n'.join(settings_lines(self.interface)))
+        self.tk.Label(card, text='\n'.join(settings_lines(self.interface)), bg=WHITE, fg=NAV, anchor='w',
+                      justify='left', font=(FONT, 10)).pack(fill='x', padx=16, pady=(0, 12))
+        self._card_title(card, '一号位允许品类', '按订单模板单独保存')
+        orders = [item for item in self.templates if '一号位允许品类' in
+                  task_settings.task_options(item['entry'], self.interface)]
+        choice = self.tk.StringVar(value=orders[0]['label'])
+        picker = ttk.Combobox(card, textvariable=choice, values=[item['label'] for item in orders],
+                              state='readonly', style='Hud.TCombobox')
+        picker.pack(anchor='w', padx=16, pady=(0, 8))
+        editor = self.tk.Frame(card, bg=WHITE, width=360)
+        editor.pack(fill='both', expand=True, padx=8)
+
+        def choose(_event=None):
+            for child in editor.winfo_children():
+                child.destroy()
+            entry = next(item['entry'] for item in orders if item['label'] == choice.get())
+            self.task_option_vars = self._option_editor(editor, entry)
+
+        picker.bind('<<ComboboxSelected>>', choose)
+        choose()
 
     def _page_dev(self):
         card = self.tk.Frame(self.stage, bg=WHITE, highlightbackground=LINE, highlightthickness=1)
@@ -1021,7 +1166,7 @@ class FarmHud:
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('--launch', action='store_true', help='open a detached read-only window')
+    parser.add_argument('--launch', action='store_true', help='open a detached operations window')
     parser.add_argument('--live', action='store_true', help='read the local cache once at startup')
     parser.add_argument('--page', choices=tuple(PAGE_TITLES), default='autorun')
     parser.add_argument('--snapshot', type=Path, default=SNAPSHOT)
@@ -1030,6 +1175,7 @@ def main():
         print(json.dumps({'pid': launch_hud(args.page), 'window': TITLE, 'read_only': True}, ensure_ascii=False))
         return
     import tkinter as tk
+    set_app_identity()
     root = tk.Tk()
     FarmHud(root, snapshot_path=args.snapshot, start_read=args.live, initial_page=args.page)
     root.mainloop()
