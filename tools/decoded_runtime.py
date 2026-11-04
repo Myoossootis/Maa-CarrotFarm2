@@ -24,8 +24,10 @@ sys.modules.setdefault('tools.decoded_runtime', sys.modules[__name__])
 ROOT = Path(__file__).resolve().parents[1]
 _selection = ContextVar('decoded_order_selection', default=None)
 
-# Ordinary-order / employee-plan path. Party/takeout capacity stays on 90 until rechecked.
-VERIFIED_NORMAL_PACKAGES = frozenset({'90', '98'})
+# Ordinary-order / employee-plan path. Package 99 reuses the 98 ViewFarm timing
+# (byte-identical getOutputProgress, CROP_IDX, OUTPUT_TYPE, SRATE).
+# Party/takeout capacity stays on 90 until rechecked.
+VERIFIED_NORMAL_PACKAGES = frozenset({'90', '98', '99'})
 
 
 class DecodeError(RuntimeError):

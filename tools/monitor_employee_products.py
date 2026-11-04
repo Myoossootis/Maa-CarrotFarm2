@@ -160,13 +160,15 @@ def monitor(plans: dict[str, int], poll_seconds: int, timeout_seconds: int, expe
     errors: dict[str, int] = {}
     reset_slots: list[str] = []
     cleared_slots: list[str] = []
+    conflict_slots: list[str] = []
     observations = {}
     def checkpoint(status):
         RESULT.parent.mkdir(parents=True, exist_ok=True)
         write_json(RESULT, {"status": status, "plans": plans, "collected_at_utc": collected,
             "assignment_id": operation['assignment_id'] if operation else None,
             "reset_slots": reset_slots, "cleared_slots": cleared_slots, "observations": observations,
-            "pending": [slot for slot in plans if slot not in collected],
+            "recipe_conflict_slots": list(conflict_slots),
+            "pending": [slot for slot in plans if slot not in collected and slot not in conflict_slots],
             "elapsed_seconds": round(time.monotonic() - started, 1)})
     try:
         tasker.set_save_draw(False)
@@ -186,6 +188,7 @@ def monitor(plans: dict[str, int], poll_seconds: int, timeout_seconds: int, expe
         while len(collected) < len(plans):
             if time.monotonic() - started > timeout_seconds:
                 break
+            conflict_slots.clear()
             for slot_id, required in plans.items():
                 if slot_id in collected:
                     continue
@@ -204,7 +207,23 @@ def monitor(plans: dict[str, int], poll_seconds: int, timeout_seconds: int, expe
                             observations[slot_id] = result
                             checkpoint('monitoring')
                             continue
-                        if decoded.plan_items(slot_id, data) != expected_items[slot_id]:
+                        current_items = decoded.plan_items(slot_id, data)
+                        if current_items != expected_items[slot_id]:
+                            entry = decoded.plan(slot_id, data)
+                            if operations.recipe_conflict_held(entry, current_items, expected_items[slot_id]):
+                                # Another saved slot may still match. Do not click or abort the batch.
+                                result = dict(collected=False, reason='recipe_conflict_skip',
+                                              game_operations=0, progress=None)
+                                errors[slot_id] = 0
+                                observations[slot_id] = result
+                                conflict_slots.append(slot_id)
+                                label = SLOTS.get(slot_id, {}).get('label', slot_id)
+                                line = f'[进度] {label} 配方与已保存计划不一致且仍持有产物，跳过收取且不点击'
+                                if reported.get(slot_id) != line:
+                                    reported[slot_id] = line
+                                    print(line, flush=True)
+                                checkpoint('monitoring')
+                                continue
                             raise decoded.DecodeError(f'{slot_id}: decoded plan identity differs from the saved assignment; no collection click')
                         progress = decoded.progress(slot_id, required, data)
                     else:
@@ -252,6 +271,8 @@ def monitor(plans: dict[str, int], poll_seconds: int, timeout_seconds: int, expe
                     cleared_slots.append(slot_id)
                     checkpoint("monitoring")
             tasker.clear_cache()
+            if not [slot for slot in plans if slot not in collected and slot not in conflict_slots]:
+                break
             if len(collected) < len(plans):
                 # The employee work page stops the farm simulation timer. Leave
                 # it before sleeping so crops and livestock keep producing.
@@ -262,11 +283,18 @@ def monitor(plans: dict[str, int], poll_seconds: int, timeout_seconds: int, expe
         _close_employee_menu_with_retry(controller)
         if operation and len(collected) == len(plans):
             operations.mark(operation, 'collected')
-        checkpoint("complete" if len(collected) == len(plans) else "timed_out")
+        if len(collected) == len(plans):
+            final_status = "complete"
+        elif conflict_slots and all(slot in collected or slot in conflict_slots for slot in plans):
+            final_status = "recipe_conflict_skip"
+        else:
+            final_status = "timed_out"
+        checkpoint(final_status)
         return {
             "complete": len(collected) == len(plans),
             "collected_at_utc": collected,
-            "pending": [slot_id for slot_id in plans if slot_id not in collected],
+            "pending": [slot_id for slot_id in plans if slot_id not in collected and slot_id not in conflict_slots],
+            "recipe_conflict_slots": list(conflict_slots),
             "reset_slots": reset_slots,
             "cleared_slots": cleared_slots,
             "elapsed_seconds": round(time.monotonic() - started, 1),
@@ -279,7 +307,8 @@ def monitor(plans: dict[str, int], poll_seconds: int, timeout_seconds: int, expe
             "reset_slots": reset_slots,
             "cleared_slots": cleared_slots,
             "observations": observations,
-            "pending": [slot for slot in plans if slot not in collected],
+            "recipe_conflict_slots": list(conflict_slots),
+            "pending": [slot for slot in plans if slot not in collected and slot not in conflict_slots],
             "elapsed_seconds": round(time.monotonic() - started, 1),
             "error": str(error),
             "error_type": type(error).__name__,

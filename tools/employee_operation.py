@@ -172,6 +172,20 @@ def verify_owner(record, slot, data):
     return entry
 
 
+def recipe_conflict_held(entry, current_items, expected_items):
+    """Saved recipe differs while this slot still holds a live plan or products.
+
+    That is not permission to collect, click, or supersede the slot.
+    An idle mismatch (nothing held) stays unresolved and must still stop.
+    """
+    if current_items == expected_items:
+        return False
+    if entry.get('targets') or entry.get('heldProducts') or entry.get('productionOperations'):
+        return True
+    return any(type(row.get('count')) is int and row['count'] > 0
+               for row in entry.get('accumulated') or [])
+
+
 def collection_record(record, slot):
     return read(Path(record['operation_dir']) / 'claims/collections' / (slot + '.json'))
 
@@ -207,6 +221,8 @@ def supersede_cleared_plans(record, data):
 
     Physical crops on the land may still exist (manual planting). This only
     authorizes skipping our bound tomato/corn-style collection; it never clicks.
+    A slot whose live recipe differs while it still holds products or targets
+    stays unresolved for the whole operation; do not archive that conflict.
     """
     decoded.validate(data)
     decoded.require_normal_package(data)

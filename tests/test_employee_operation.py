@@ -148,6 +148,18 @@ class EmployeeOperationTests(unittest.TestCase):
                 before_save=lambda data: ops.reserve_save(self.record, 'field_1', data))
         self.assertEqual(len(saves), 1)
 
+    def test_held_recipe_conflict_is_not_superseded(self):
+        self.saved()
+        record = ops.mark(self.record, 'saved')
+        data = ready()
+        entry = decoded.plan('field_1', data)
+        entry['targets'] = [{'name': '番茄', 'itemId': 1, 'count': 8}]
+        entry['heldProducts'] = [{'name': '番茄', 'itemId': 1, 'count': 8}]
+        with self.assertRaises(decoded.DecodeError):
+            ops.supersede_cleared_plans(record, data)
+        self.assertEqual(ops.active(self.root)['status'], 'saved')
+        self.assertFalse((Path(record['operation_dir']) / 'supersede_cleared.json').exists())
+
     def test_supersede_cannot_hide_unconfirmed_claim_or_accumulated_products(self):
         self.saved()
         record = ops.mark(self.record, 'saved')
