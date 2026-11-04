@@ -5,7 +5,7 @@
 // for farmland lock/unlock property slots differ. Evidence: .tmp/production98/.
 // Package 99 ViewFarmModel is byte-identical to 98, including getOutputProgress,
 // CROP_IDX, OUTPUT_TYPE and SRATE, so the same timing rules apply. Party/takeout
-// order capacity stays 90-only in the order decoder.
+// order capacity is a separate contract in the order decoder (packages 90 and 99).
 // This module consumes decoded records only; it has no process, UI or network API.
 const VERIFIED_PACKAGES=new Set(['87','90','98','99']);
 const BUILDINGS=new Map([[12,'field'],[284,'field'],[285,'field'],[17,'ranch'],[723,'ranch'],[28,'orchard'],[286,'orchard']]);
