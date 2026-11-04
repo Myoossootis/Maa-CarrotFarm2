@@ -2,7 +2,7 @@
 
 基于 [MaaFramework](https://github.com/MaaXYZ/MaaFramework) 的 **Win32 后台**自动化：FramePool 截图 + PostMessage 点击，不抢前台鼠标。
 
-开发版本 **0.13.1**：普通订单3倍持续循环已接入Maa任务，缺料支持员工分批补产与恢复；普通订单／生产路径允许客户端90、98、99，聚会／外卖次数语义仍仅核对90。「萝卜家园自动化」窗口查看监控、订单、背包与岗位，并可按模板编辑和保存全部Maa任务选项；13个模板可以直接开始、暂停、继续和结束，无需打开旧Maa面板。当前UI和实机验收边界见[独立界面报告](docs/AUTOMATION_UI_2026-11-03.md)，开发约定见[CONTRIBUTING.md](CONTRIBUTING.md)，交付写入[版本记录](CHANGELOG.md)。
+开发版本 **0.13.2**：普通订单3倍持续循环已接入Maa任务，缺料支持员工分批补产与恢复；监控收取默认解码，配方冲突且仍持有产物时跳过该岗位，无需再设置 `CARROT_STATE_READER`。普通订单／生产路径允许客户端90、98、99，聚会／外卖次数语义仍仅核对90。「萝卜家园自动化」窗口查看监控、订单、背包与岗位，并可按模板编辑和保存全部Maa任务选项；13个模板可以直接开始、暂停、继续和结束，无需打开旧Maa面板。当前UI和实机验收边界见[独立界面报告](docs/AUTOMATION_UI_2026-11-03.md)，开发约定见[CONTRIBUTING.md](CONTRIBUTING.md)，交付写入[版本记录](CHANGELOG.md)。
 
 直接双击根目录 `启动萝卜家园自动化.cmd`。旧 `启动Maa界面.cmd` 也已转入新主界面；默认普通3倍模板，打开时不自动运行任务。
 
@@ -61,6 +61,8 @@ REM live (do NOT shrink/minimize the window)
 | 监控并收取 | .venv\Scripts\python.exe tools\monitor_employee_products.py --assignment-file assets\catalog\employee_work\latest_assignment.json --apply |
 | 按缺口作物重匹配交单 | .venv\Scripts\python.exe tools\complete_normal_orders.py --target-file <submit_target.json> |
 | 单槽收取（例：计划27） | .venv\Scripts\python.exe tools\configure_field_employee.py --slot field_1 --collect --target 27 --apply |
+
+监控收取的 `--apply` 默认使用解码读取，不必先设置 `CARROT_STATE_READER`。配方与已保存计划不一致且岗位仍持有产物时，该岗位记为 `recipe_conflict_skip` 并跳过点击。任务文件必须与当前绑定的员工操作一致，否则停止，不再改走识图。只有显式 `CARROT_STATE_READER=ocr` 才改回识图轮询，此时不会做该跳过。不加 `--apply` 的预览不改变读取方式。只写 `--plans` 且 `--apply`、又没有任务文件时会停止，不再静默识图收取。
 
 员工能力表（等级门槛）：assets/catalog/employee_capabilities.json（schema v2）。未实机录等级的作物在 pending_capabilities，不要当成已可排产。
 
