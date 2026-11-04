@@ -182,17 +182,36 @@ function inventoryOf(bag,config,now){
   return {recordCount:records.length,products:[...totals].map(([itemId,count])=>({itemId,name:config.name(itemId),count})),records};
 }
 
+// Party/takeout count semantics checked on every read for these packages only.
+// 90: client refreshOrderCount / showPanelNeedFood / acceptOrder, 2026-10-25.
+// 99: same cfg contract as 90 (order 101/102 → ref_id token, item_type 24,
+// output type 2, limit 1–6). Other packages stay incomplete; do not infer 0.
+const VERIFIED_CAPACITY_PACKAGES=new Set(['90','99']);
+const CAPACITY_ORDERS=[['party',101],['takeout',102]];
+// Verified token identity from the v90 static check. ref_id is still read from
+// config; a different id fails closed instead of being treated as that balance.
+const CAPACITY_TOKENS={party:103,takeout:104};
+
 function orderCapacityOf(inventory,config){
-  // Verified against the v90 count display and accept guards. This is the
-  // current token balance, separate from our historical completion ledger.
-  const result={complete:false,semanticsPackageVersion:String(config.version),entries:[]};
-  if(String(config.version)!=='90') return {...result,reason:'unverified_package_version'};
-  for(const [category,orderId] of [['party',101],['takeout',102]]){
-    const tokenId=Number(extraOf(config.items.get(orderId)?.params).ref_id);
-    const token=config.items.get(tokenId),output=config.outputs?.get(Number(extraOf(token?.params).output_id));
-    if(!Number.isSafeInteger(tokenId)||token?.item_type!==24||output?.item_id!==tokenId||output.type!==2||
-       !Number.isSafeInteger(output.limit)||output.limit<1||output.limit>6)
-      throw Error('Invalid order capacity configuration: '+category);
+  // Current token balance from non-expired inventory, separate from the
+  // historical completion ledger. A verified package still fails closed when
+  // the live config no longer matches the contract.
+  const version=String(config.version);
+  const result={complete:false,semanticsPackageVersion:version,entries:[]};
+  if(!VERIFIED_CAPACITY_PACKAGES.has(version)) return {...result,reason:'unverified_package_version'};
+  for(const [category,orderId] of CAPACITY_ORDERS){
+    const orderItem=config.items.get(orderId);
+    const tokenId=Number(extraOf(orderItem?.params).ref_id);
+    const token=Number.isSafeInteger(tokenId)?config.items.get(tokenId):undefined;
+    const outputId=Number(extraOf(token?.params).output_id);
+    const output=config.outputs?.get(outputId);
+    if(!orderItem) throw Error('Invalid order capacity configuration: '+category+' order item');
+    if(!Number.isSafeInteger(tokenId)||!token) throw Error('Invalid order capacity configuration: '+category+' token ref');
+    if(tokenId!==CAPACITY_TOKENS[category]) throw Error('Invalid order capacity configuration: '+category+' token identity');
+    if(token.item_type!==24) throw Error('Invalid order capacity configuration: '+category+' token type');
+    if(!output||output.item_id!==tokenId||output.type!==2) throw Error('Invalid order capacity configuration: '+category+' output');
+    if(!Number.isSafeInteger(output.limit)||output.limit<1||output.limit>6)
+      throw Error('Invalid order capacity configuration: '+category+' limit');
     let remaining=0;
     for(const record of inventory.records.filter(x=>x.itemId===tokenId)){
       if(!Number.isSafeInteger(record.count)||record.count<0) throw Error('Invalid order capacity count');
@@ -446,5 +465,5 @@ function main(){
   process.stderr.write(JSON.stringify({mode:options.mode,timings,output:options.output||'stdout'})+'\n');
 }
 
-module.exports={readv,crc32,parseMMKV,unwrapValue,extraOf,progressOf,familyFromRecords,inventoryOf,ordersOf,employeesOf,orderCapacityOf,createReader};
+module.exports={readv,crc32,parseMMKV,unwrapValue,extraOf,progressOf,familyFromRecords,inventoryOf,ordersOf,employeesOf,orderCapacityOf,VERIFIED_CAPACITY_PACKAGES,createReader};
 if(require.main===module){try{main();}catch(error){process.stderr.write(JSON.stringify({error:error.message,readOnly:true})+'\n');process.exitCode=1;}}

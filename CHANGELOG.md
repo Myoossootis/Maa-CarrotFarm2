@@ -1,5 +1,11 @@
 # 版本记录
 
+## 0.13.3 — 2026-11-04
+
+- 聚会／外卖次数对客户端 99 使用与 90 相同的配置契约：订单物品 101／102 的 `ref_id` 必须仍指向 103／104，道具类型 24，关联 `cfg_output` 类型 2 且上限为 1–6。通过后 `orderCapacity.complete` 为真，余额只累加未过期库存；没有记录是明确的 0，不是未核对。契约对不上会抛出具体配置错误，不会把次数写成 0。
+- 98 以及其他未列入的包版本仍返回 `unverified_package_version` 和空 `entries`。Python `order_capacity` 只接受 90 与 99，且 `semanticsPackageVersion` 必须等于当前包版本。
+- 验证：Node 容量回归与 `tests/test_order_capacity.py`。本次没有游戏点击，不购买次数，也不改普通订单规划或配方冲突跳过。余额为 0 时正式流程仍等待，界面分子分母不一致则停止。实机包不在本仓库，没有重新对照 99 的 `SceneGuestOrderLogic` 字节；放行条件是每次读取都复核上述配置契约。见 [次数包版本](docs/ORDER_CAPACITY_PACKAGES.md)。
+
 ## 0.13.2 — 2026-11-04
 
 - 监控收取（`monitor_employee_products.py --apply`，以及普通订单循环等调用它的收取／恢复）在未设置 `CARROT_STATE_READER` 时默认使用解码。已保存配方与现场计划不一致且该岗位仍持有产物时，仍记为 `recipe_conflict_skip`：该岗位零点击，并继续其他岗位。不再因为忘了导出环境变量而退回识图轮询，把冲突岗位挂到超时。

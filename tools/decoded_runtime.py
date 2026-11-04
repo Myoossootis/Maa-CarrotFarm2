@@ -26,8 +26,10 @@ _selection = ContextVar('decoded_order_selection', default=None)
 
 # Ordinary-order / employee-plan path. Package 99 reuses the 98 ViewFarm timing
 # (byte-identical getOutputProgress, CROP_IDX, OUTPUT_TYPE, SRATE).
-# Party/takeout capacity stays on 90 until rechecked.
+# Party/takeout capacity uses the same cfg contract on 90 and 99. Package 98
+# stays out until that contract is rechecked for it.
 VERIFIED_NORMAL_PACKAGES = frozenset({'90', '98', '99'})
+VERIFIED_CAPACITY_PACKAGES = frozenset({'90', '99'})
 
 
 class DecodeError(RuntimeError):
@@ -178,14 +180,17 @@ def order_capacity(kind, data=None):
     data = snapshot() if data is None else data
     validate(data)
     capacity = data.get('orderCapacity') or {}
+    version = data.get('packageVersion')
     if not isinstance(capacity, dict):
         raise DecodeError('Order capacity schema is invalid')
     entries = capacity.get('entries', [])
-    if (kind not in ('party', 'takeout') or data.get('packageVersion') != '90'
-            or capacity.get('complete') is not True or capacity.get('semanticsPackageVersion') != '90'
+    if kind not in ('party', 'takeout') or version not in VERIFIED_CAPACITY_PACKAGES:
+        raise DecodeError(f'Order capacity package {version!r} is unverified')
+    if (capacity.get('complete') is not True or capacity.get('semanticsPackageVersion') != version
             or not isinstance(entries, list) or len(entries) != 2 or not all(isinstance(row, dict) for row in entries)
             or {row.get('category') for row in entries} != {'party', 'takeout'}):
-        raise DecodeError('Order capacity is missing, incomplete or unverified')
+        reason = capacity.get('reason') or 'incomplete'
+        raise DecodeError('Order capacity is missing, incomplete or unverified: ' + str(reason))
     for row in entries:
         if (row.get('tokenItemId') != {'party': 103, 'takeout': 104}[row['category']]
                 or type(row.get('remaining')) is not int or not 0 <= row['remaining'] <= 2**53 - 1
