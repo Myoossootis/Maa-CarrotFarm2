@@ -318,5 +318,65 @@ class FormalBackendTests(unittest.TestCase):
         self.assertEqual(result['pending'], [])
 
 
+class UnsetReaderConflictSkipTests(unittest.TestCase):
+    """The 2026-11-04 apply hang: conflict_skip never armed when the env was unset."""
+
+    def test_unset_env_skips_held_mismatch_without_ocr_timeout(self):
+        data = state()
+        plans = {row['buildingItemId']: row for row in data['employees']['plans']}
+        field = plans[12]
+        field['targets'] = [{'name': '土豆', 'itemId': 158, 'count': 50}]
+        field['heldProducts'] = [{'name': '土豆', 'itemId': 158, 'count': 50}]
+        field['accumulated'] = []
+        orchard = plans[28]
+        orchard['targets'] = [{'name': '苹果', 'itemId': 29, 'count': 4}]
+        orchard['heldProducts'] = [{'name': '苹果', 'itemId': 29, 'count': 4}]
+        orchard['accumulated'] = []
+        orchard['buildingUid'] = 28
+        clocks = {'n': 0}
+
+        def monotonic():
+            clocks['n'] += 1
+            # A missed conflict skip polls until timeout. Fail that path quickly
+            # without moving the clock on the short success path.
+            if clocks['n'] > 40:
+                return 10_000.0
+            return 0.0
+
+        seen = []
+
+        def claim(*args, **kwargs):
+            slot = args[1]
+            seen.append((slot, os.environ.get('CARROT_STATE_READER')))
+            if slot == 'field_1':
+                return {'collected': False, 'reason': 'target_not_verified', 'progress': None}
+            return {'collected': True, 'progress': (4, 4)}
+
+        with patch.dict(os.environ, {}, clear=False):
+            os.environ.pop('CARROT_STATE_READER', None)
+            with ExitStack() as stack:
+                for name in ('Win32Controller', 'Resource', 'Tasker', 'find_window', 'write_json',
+                             'RESULT', '_close_employee_menu_with_retry'):
+                    stack.enter_context(patch.object(monitoring, name))
+                sleep = stack.enter_context(patch.object(monitoring.time, 'sleep'))
+                stack.enter_context(patch.object(monitoring.time, 'monotonic', monotonic))
+                stack.enter_context(patch.object(monitoring.decoded, 'snapshot', return_value=data))
+                stack.enter_context(patch('sys.stdout', io.StringIO()))
+                stack.enter_context(patch.object(monitoring, 'collect_finished_slot', side_effect=claim))
+                result = monitoring.monitor(
+                    {'field_1': 23, 'orchard_1': 4}, 5, 30,
+                    {'field_1': {'玫瑰': 23}, 'orchard_1': {'苹果': 4}})
+            self.assertIsNone(os.environ.get('CARROT_STATE_READER'))
+        self.assertEqual(seen, [('orchard_1', 'decoded')])
+        self.assertEqual(result['recipe_conflict_slots'], ['field_1'])
+        self.assertNotIn('field_1', result['collected_at_utc'])
+        self.assertIn('orchard_1', result['collected_at_utc'])
+        self.assertEqual(result['pending'], [])
+        self.assertFalse(result['complete'])
+        self.assertLess(result['elapsed_seconds'], 30)
+        self.assertLessEqual(clocks['n'], 40)
+        sleep.assert_not_called()
+
+
 if __name__ == '__main__':
     unittest.main()
