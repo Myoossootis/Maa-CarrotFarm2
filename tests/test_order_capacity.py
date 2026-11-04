@@ -23,11 +23,25 @@ class CapacityTests(unittest.TestCase):
         data=self.data(6)
         with patch.object(decoded,'validate'):
             self.assertEqual(decoded.order_capacity('party',data)['remaining'],6)
-            for invalid in ({},dict(data,packageVersion='91'),dict(data,orderCapacity={'complete':False}),
+            for invalid in ({},dict(data,packageVersion='91'),dict(data,packageVersion='99'),
+                            dict(data,packageVersion='100'),dict(data,orderCapacity={'complete':False}),
                             dict(data,orderCapacity=dict(data['orderCapacity'],entries=[capacity(),capacity()])),
                             dict(data,orderCapacity=dict(data['orderCapacity'],entries=None)),
                             self.data(True),self.data(-1)):
                 with self.assertRaises(decoded.DecodeError):decoded.order_capacity('party',invalid)
+
+    def test_package_99_allows_normal_orders_but_not_party_or_takeout_capacity(self):
+        self.assertEqual(decoded.require_normal_package({'packageVersion': '99'}), '99')
+        self.assertIn('98', decoded.VERIFIED_NORMAL_PACKAGES)
+        with self.assertRaisesRegex(decoded.DecodeError, "100.*unverified"):
+            decoded.require_normal_package({'packageVersion': '100'})
+        data = self.data(6)
+        data['packageVersion'] = '99'
+        data['orderCapacity'] = dict(data['orderCapacity'], semanticsPackageVersion='99')
+        with patch.object(decoded, 'validate'):
+            for kind in ('party', 'takeout'):
+                with self.assertRaises(decoded.DecodeError):
+                    decoded.order_capacity(kind, data)
 
     def test_zero_and_insufficient_capacity_wait_but_disagreement_is_unknown(self):
         for remaining,required,status in ((0,6,'order_capacity_exhausted'),(1,6,'order_batch_unavailable'),(1,1,'available'),(6,6,'available')):

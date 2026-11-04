@@ -284,6 +284,39 @@ class FormalBackendTests(unittest.TestCase):
             observed.assert_called_once()
             collect.assert_not_called()
 
+    def test_held_recipe_conflict_skips_collect_and_keeps_matching_slot(self):
+        data = state()
+        plans = {row['buildingItemId']: row for row in data['employees']['plans']}
+        field = plans[284]
+        field['targets'] = [{'name': '番茄', 'itemId': 155, 'count': 10}]
+        field['heldProducts'] = [{'name': '番茄', 'itemId': 155, 'count': 10}]
+        field['accumulated'] = []
+        orchard = plans[28]
+        orchard['targets'] = [{'name': '苹果', 'itemId': 29, 'count': 4}]
+        orchard['heldProducts'] = [{'name': '苹果', 'itemId': 29, 'count': 4}]
+        orchard['accumulated'] = []
+        orchard['buildingUid'] = 28
+        with ExitStack() as stack:
+            for name in ('Win32Controller', 'Resource', 'Tasker', 'find_window', 'write_json',
+                         'RESULT', '_close_employee_menu_with_retry'):
+                stack.enter_context(patch.object(monitoring, name))
+            stack.enter_context(patch.object(monitoring.time, 'sleep'))
+            stack.enter_context(patch('sys.stdout', io.StringIO()))
+            collect = stack.enter_context(patch.object(
+                monitoring, 'collect_finished_slot',
+                return_value={'collected': True, 'progress': (4, 4)}))
+            stack.enter_context(patch.object(reader, 'snapshot', return_value=data))
+            result = monitoring.monitor(
+                {'field_2': 10, 'orchard_1': 4}, 5, 30,
+                {'field_2': {'小麦': 10}, 'orchard_1': {'苹果': 4}})
+        self.assertEqual(collect.call_count, 1)
+        self.assertEqual(collect.call_args.args[1], 'orchard_1')
+        self.assertEqual(result['recipe_conflict_slots'], ['field_2'])
+        self.assertNotIn('field_2', result['collected_at_utc'])
+        self.assertIn('orchard_1', result['collected_at_utc'])
+        self.assertFalse(result['complete'])
+        self.assertEqual(result['pending'], [])
+
 
 if __name__ == '__main__':
     unittest.main()
