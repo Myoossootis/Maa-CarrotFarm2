@@ -183,6 +183,9 @@ test('missing bag without recover fields stays zero; common storage can supply o
   assert.equal(none.complete,true);
   assert.equal(none.semanticsPackageVersion,'100');
   assert.deepEqual(none.entries.map(row=>[row.remaining,row.limit]),[[0,6],[0,6]]);
+  const booleanCommon=orderCapacityOf({records:[]},config,now,{104:true});
+  assert.deepEqual(booleanCommon.entries.map(row=>row.remaining),[0,0]);
+  assert.equal(orderCapacityOf({records:[]},config,now,{103:true,104:true}).entries[0].remaining,0);
   const common={103:{refresh_time:now-2*3600,repeat_count:0},104:'refresh_time,'+(now-3600)+';repeat_count,0'};
   const recovered=orderCapacityOf({records:[]},config,now,common);
   assert.deepEqual(recovered.entries.map(row=>row.remaining),[2,1]);

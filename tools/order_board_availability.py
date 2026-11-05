@@ -27,6 +27,9 @@ WAITING_STATES = {'board_unavailable', 'board_loading', 'order_capacity_exhauste
 # Live FramePool frames are often a few pixels short of 1358. The same drift is
 # already accepted by top_letterbox_offset; an exact height check rejected them.
 BOARD_HEIGHT_TOLERANCE = 16
+# setItemNum persists these names. A missing or non-positive refresh is not a clock.
+# repeat_count without a refresh does not recover tokens.
+_REFRESH_KEYS = ('refresh_time', 'REFRESH_TIME', 'r_time')
 
 
 def board_frame(frame):
@@ -82,11 +85,92 @@ def read_availability(tasker, frame, kind):
     return result
 
 
+def _clock_present(value):
+    if value is None or value is False or value == '':
+        return False
+    if type(value) is int:
+        return value != 0
+    return True
+
+
+def _token_rows(capacity):
+    """Non-expired token rows when the entry actually carries them.
+
+    `order_capacity` does not attach bag rows. No `records` key means this
+    probe cannot see the bag, so the caller treats remaining 0 as empty.
+    """
+    records = capacity.get('records')
+    if not records:
+        return False
+    if not isinstance(records, list):
+        return True
+    token = capacity.get('tokenItemId')
+    for row in records:
+        if not isinstance(row, dict):
+            return True
+        item_id = row.get('itemId', row.get('item_id'))
+        if type(item_id) is not int or item_id == token:
+            return True
+    return False
+
+
+def empty_token_cache(capacity):
+    """Decoded remaining 0 with no live token row and no recover clock.
+
+    A boolean `SAVE_KEY_COMMON` slot is not a clock and is not on this entry.
+    """
+    if not isinstance(capacity, dict) or type(capacity.get('remaining')) is not int or capacity['remaining'] != 0:
+        return False
+    if _token_rows(capacity):
+        return False
+    return not any(_clock_present(capacity.get(key)) for key in _REFRESH_KEYS)
+
+
+def _counter_pair(counter):
+    if not isinstance(counter, list) or len(counter) != 2 or any(type(item) is not int for item in counter):
+        return None
+    return counter
+
+
+def apply_token_counter(current, capacity, required_count):
+    """Keep the cache count when it matches the banner.
+
+    `decoded.order_capacity` has already rejected an incomplete or unverified
+    package. An empty entry may follow a readable banner `[n, limit]`; the
+    decoded remaining stays 0 and the effective count is that `n`.
+    """
+    current['capacity'] = capacity
+    current['required_count'] = required_count
+    counter = _counter_pair(current.get('ui_counter'))
+    limit = capacity.get('limit') if isinstance(capacity, dict) else None
+    remaining = capacity.get('remaining') if isinstance(capacity, dict) else None
+    if counter is None or type(limit) is not int or counter[1] != limit:
+        current.update(status='board_unknown', reason='capacity_ui_cache_mismatch')
+        return current
+    shown = counter[0]
+    if type(remaining) is int and shown == remaining:
+        effective = remaining
+    elif empty_token_cache(capacity) and 0 < shown <= limit:
+        effective = shown
+        current['capacity_source'] = 'ui_counter'
+        current['effective_remaining'] = shown
+    else:
+        current.update(status='board_unknown', reason='capacity_ui_cache_mismatch')
+        return current
+    if effective == 0:
+        current.update(status='order_capacity_exhausted', reason='confirmed_zero_order_tokens')
+    elif effective < required_count:
+        current.update(status='order_batch_unavailable', reason='insufficient_order_tokens_for_requested_batch')
+    return current
+
+
 def probe_availability(tasker, controller, kind, *, required_count=None):
     """Bounded fresh reads only: tab-ready can precede card loading.
 
     The limit caption is also present on populated boards. It cannot establish
     the cause of an empty board, exhausted acceptance quota, or a resume time.
+    A readable counter can supply the count only when the decoded token cache
+    is empty; it is never used to invent a full limit by itself.
     """
     observations = []
     for attempt in range(3):
@@ -104,15 +188,5 @@ def probe_availability(tasker, controller, kind, *, required_count=None):
     if current['status'] == 'available' and required_count is not None:
         if type(required_count) is not int or not 1 <= required_count <= 6 or not decoded.enabled():
             raise decoded.DecodeError('Order capacity check requires decoded mode and an explicit valid count')
-        capacity = decoded.order_capacity(kind)
-        counter = current.get('ui_counter')
-        current['capacity'] = capacity
-        current['required_count'] = required_count
-        if (not isinstance(counter, list) or len(counter) != 2 or any(type(x) is not int for x in counter)
-                or counter != [capacity['remaining'], capacity['limit']]):
-            current.update(status='board_unknown', reason='capacity_ui_cache_mismatch')
-        elif capacity['remaining'] == 0:
-            current.update(status='order_capacity_exhausted', reason='confirmed_zero_order_tokens')
-        elif capacity['remaining'] < required_count:
-            current.update(status='order_batch_unavailable', reason='insufficient_order_tokens_for_requested_batch')
+        apply_token_counter(current, decoded.order_capacity(kind), required_count)
     return current

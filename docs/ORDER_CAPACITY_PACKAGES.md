@@ -31,13 +31,21 @@ Node `orderCapacityOf` 与 Python `decoded_runtime.order_capacity` 都只接受 
 
 ## 2026-11-05 空背包与界面 6/6
 
-当天 Asia/Singapore、包 100：聚会订单横幅是 **完成订单次数: 6/6**。白名单放行后契约通过，但 MMKV 没有道具 103／104 的行（`rawTok=[]`），快照里也没有上面的刷新时间或重复次数。解码 `remaining` 为 0。这不是未核对版本，也不是可以自行补成 6 的证据。
+当天 Asia/Singapore、包 100：聚会订单横幅是 **完成订单次数: 6/6**。白名单放行后契约通过，但 MMKV 没有道具 103／104 的行（`rawTok=[]`），快照里也没有上面的刷新时间或重复次数。`SAVE_KEY_COMMON['104']` 只是布尔值 `true`，没有 `common['103']`。布尔值不是刷新时钟。解码 `remaining` 仍为 0。这不是未核对版本，Node 也不会把 `remaining` 写成 `limit`。
 
-客户端内存里的 BagCache 可以在 `setItemNum` 写回之前，把 `item_num + iCdNum` 显示成 6，即使持久化的 `item_num` 为 0 或这一行根本不在我们读到的 MMKV 里。没有行、也没有恢复字段时，仍然报 0。正式流程把界面分子分母和这个余额比较，对不上就是 `capacity_ui_cache_mismatch` 并停止。不购买次数，不退回 OCR 填余额。
+客户端内存里的 BagCache 可以在 `setItemNum` 写回之前，把 `item_num + iCdNum` 显示成 6，即使这一行不在我们读到的 MMKV 里。0.13.6 起，正式看板在下面的空缓存条件下改信界面上已经读到的分子，不购买次数，也不让 `orderCapacityOf` 补 tick。
 
-## 余额为 0 时仍然不会交单
+`probe_availability` 只在这些条件同时成立时，把有效次数当成界面分子 `n`（来源 `ui_counter`）：
 
-契约通过、且没有库存行也没有恢复时钟时，快照类似。2026-11-05 客户端 100 的实机读取就是这一形状；当时界面是 6/6，所以正式流程应停止而不是当成次数用尽：
+- `order_capacity` 已通过：`complete` 为真，包版本在已核对名单里。未核对或 `complete` 不为真时仍然抛出解码错误，不改用界面次数。
+- 该条 `remaining` 为 0。探测只拿到容量条目；条目上没有该道具的未过期行，也没有正的刷新时间，就视为空背包。
+- 界面计数是整数 `[n, limit]`，`limit` 等于该条上限，且 `0 < n <= limit`。
+
+这时按 `n` 决定可接或 `order_batch_unavailable`，不返回 `capacity_ui_cache_mismatch`。没有可读计数时不会把次数写成上限。
+
+## 余额为 0 时的正式结果
+
+契约通过、且没有库存行也没有恢复时钟时，快照类似。2026-11-05 客户端 100 的实机读取就是这一形状；`common['104']===true` 不改变这两个 0：
 
 ```json
 {
@@ -50,4 +58,4 @@ Node `orderCapacityOf` 与 Python `decoded_runtime.order_capacity` 都只接受 
 }
 ```
 
-正式流程会把该结果与界面分子分母比较。界面也是 0/6 时返回 `order_capacity_exhausted` 并等待；小于请求批次时返回 `order_batch_unavailable`；对不上（例如界面 6/6、缓存 0）则 `board_unknown` 并停止。不购买次数，不退回 OCR 填余额。90 与 99 在同一契约下，没有恢复证据而余额为 0 时同样等待。有刷新时间时，缓存余额应与横幅上的有效次数一致，比较通过后才继续。
+正式流程会把该结果与界面分子分母比较。两边都是 0/6 时返回 `order_capacity_exhausted` 并等待。界面是正的 `n/6` 且上面的空缓存条件成立时，按 `n` 继续，不把这次当成未核对。缓存里已经有次数却和界面不一致、界面分母不对、或计数缺失／不是整数，则 `board_unknown` 并停止。不购买次数。90 与 99 使用同一条比较。有刷新时间时，缓存余额应与横幅上的有效次数一致，比较通过后才继续；探测看不到背包行上的时钟，只拒绝条目自身带了正刷新时间的情况。
