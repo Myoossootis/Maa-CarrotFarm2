@@ -189,9 +189,11 @@ function inventoryOf(bag,config,now){
 // non-expired item_num plus getCdItemNumVo().iCdNum for a CD day_limit token.
 // Ticks require a persisted refresh time. No row and no recover fields stay 0;
 // do not synthesize output.limit. 2026-11-05 Asia/Singapore: the party panel
-// showed 6/6 while MMKV had no 103/104 rows (rawTok=[]). That BagCache is not
-// in the snapshot, so the UI/cache mismatch guard still stops. No client
-// package is in this repo, so there is no SceneGuestOrderLogic byte check.
+// showed 6/6 while MMKV had no 103/104 rows (rawTok=[]) and common['104'] was
+// only boolean true. That is not a refresh clock, so this function still
+// returns 0. The board probe may trust a readable UI counter for that empty
+// entry; do not invent ticks here. No client package is in this repo, so
+// there is no SceneGuestOrderLogic byte check.
 // Other packages stay incomplete; do not infer 0.
 const VERIFIED_CAPACITY_PACKAGES=new Set(['90','99','100']);
 const CAPACITY_ORDERS=[['party',101],['takeout',102]];

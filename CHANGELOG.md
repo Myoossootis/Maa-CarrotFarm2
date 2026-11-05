@@ -1,5 +1,12 @@
 # 版本记录
 
+## 0.13.6 — 2026-11-05
+
+- 聚会／外卖看板在解码契约已通过、该条 `remaining` 为 0、容量条目上没有该次数道具的未过期行、也没有正的刷新时间时，若界面计数是整数 `[n, limit]`、`limit` 等于容量上限且 `0 < n <= limit`，则按界面次数 `n`（来源 `ui_counter`）判断可接或批次不足，不再返回 `capacity_ui_cache_mismatch`。解码余额仍保持 0。界面与缓存一致时行为不变；界面 `0/limit` 且缓存为 0 仍是 `order_capacity_exhausted`。
+- 界面计数缺失、不是整数、分母不等于容量上限，或缓存 `remaining` 大于 0 却与界面不一致，仍停止。未核对包或 `complete` 不为真时，`order_capacity` 仍抛出解码错误，不改用界面次数。没有可读界面计数时不会把 `remaining` 写成 `limit`。
+- 2026-11-05（Asia/Singapore，包 100）聚会横幅是完成订单次数 6/6。MMKV 没有 103／104 行（`rawTok=[]`）。`SAVE_KEY_COMMON['104']` 只有布尔值 `true`，没有 `common['103']`，也没有 `refresh_time`／`REPEAT_COUNT`。布尔公共位不是恢复时钟。Node `orderCapacityOf` 仍把这种空背包报为 0，不补 tick。本次不购买次数，不改 OCR。
+- 验证：`tests/test_order_capacity.py` 覆盖空缓存加界面 6/6（请求 1–6 次可接）、界面 0/6 耗尽、缓存 2 对界面 6 仍不一致、分母不一致、未核对包仍失败关闭；Node 容量回归确认 `common['104']===true` 不加 tick。本次没有游戏点击。见 [次数包版本](docs/ORDER_CAPACITY_PACKAGES.md)。
+
 ## 0.13.5 — 2026-11-05
 
 - 聚会／外卖 `orderCapacity.remaining` 改为客户端有效次数：未过期的 103／104 `item_num`，加上产出为 CD 日限道具时尚未写回背包的恢复 tick。产出类型 2 且同时带正整数 `cd` 与 `params.day_limit` 才计算；`iCdNum = min(floor((now-refresh)/cd), limit-count, day_limit-当日已恢复)`，合计后再封顶到 `output.limit`。刷新时间读 `refresh_time`／`REFRESH_TIME`／`r_time`，重复次数读 `repeat_count`／`REPEAT_COUNT`／`rp_c`。重复次数只扣刷新时间所在的 Asia/Shanghai 当日；缺省按 0。没有正的刷新时间就不加 tick。

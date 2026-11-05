@@ -85,6 +85,77 @@ class CapacityTests(unittest.TestCase):
                     patch.object(decoded,'enabled',return_value=True),patch.object(decoded,'order_capacity',return_value=capacity(6)):
                 self.assertEqual(board.probe_availability(None,None,'party',required_count=6)['status'],'board_unknown')
 
+    def _probe(self, counter, required, remaining=0, kind='party', **extra):
+        current = dict(status='available', reason='visible_order_card', ui_counter=counter, next_available=None)
+        row = capacity(remaining, kind)
+        row.update(extra)
+        with patch.object(board, 'read_availability', return_value=current), patch.object(board, 'screenshot'), \
+                patch.object(decoded, 'enabled', return_value=True), \
+                patch.object(decoded, 'order_capacity', return_value=row):
+            return board.probe_availability(None, None, kind, required_count=required)
+
+    def test_empty_cache_trusts_a_readable_ui_counter(self):
+        for required in range(1, 7):
+            result = self._probe([6, 6], required)
+            self.assertEqual(result['status'], 'available')
+            self.assertEqual(result['reason'], 'visible_order_card')
+            self.assertEqual(result['effective_remaining'], 6)
+            self.assertEqual(result['capacity_source'], 'ui_counter')
+            self.assertEqual(result['capacity']['remaining'], 0)
+            self.assertIsNone(result['next_available'])
+        takeout = self._probe([6, 6], 6, kind='takeout')
+        self.assertEqual(takeout['status'], 'available')
+        self.assertEqual(takeout['capacity']['tokenItemId'], 104)
+        partial = self._probe([2, 6], 6)
+        self.assertEqual(partial['status'], 'order_batch_unavailable')
+        self.assertEqual(partial['reason'], 'insufficient_order_tokens_for_requested_batch')
+        self.assertEqual(partial['effective_remaining'], 2)
+        self.assertEqual(partial['capacity_source'], 'ui_counter')
+        self.assertEqual(self._probe([2, 6], 2)['status'], 'available')
+        self.assertEqual(self._probe([6, 6], 6, refresh_time=0)['capacity_source'], 'ui_counter')
+
+    def test_empty_cache_zero_ui_stays_exhausted_and_other_disagreements_stop(self):
+        exhausted = self._probe([0, 6], 6)
+        self.assertEqual(exhausted['status'], 'order_capacity_exhausted')
+        self.assertEqual(exhausted['reason'], 'confirmed_zero_order_tokens')
+        self.assertNotIn('capacity_source', exhausted)
+        self.assertNotIn('effective_remaining', exhausted)
+        still = self._probe([0, 6], 6, records=[dict(itemId=103, count=0)])
+        self.assertEqual(still['status'], 'order_capacity_exhausted')
+        mismatch = self._probe([6, 6], 6, remaining=2)
+        self.assertEqual(mismatch['status'], 'board_unknown')
+        self.assertEqual(mismatch['reason'], 'capacity_ui_cache_mismatch')
+        self.assertNotIn('capacity_source', mismatch)
+        self.assertEqual(mismatch['capacity']['remaining'], 2)
+        for counter in ([6, 5], [6, 7], [6, 12], None, [6], [True, 6], [7, 6], ['6', 6]):
+            stopped = self._probe(counter, 6)
+            self.assertEqual(stopped['status'], 'board_unknown', counter)
+            self.assertEqual(stopped['reason'], 'capacity_ui_cache_mismatch')
+            self.assertNotIn('effective_remaining', stopped)
+        clock = self._probe([6, 6], 6, refresh_time=1700000000)
+        self.assertEqual(clock['status'], 'board_unknown')
+        rows = self._probe([6, 6], 6, records=[dict(itemId=103, count=0)])
+        self.assertEqual(rows['status'], 'board_unknown')
+        agreed = self._probe([4, 6], 4, remaining=4)
+        self.assertEqual(agreed['status'], 'available')
+        self.assertEqual(agreed['capacity']['remaining'], 4)
+        self.assertNotIn('capacity_source', agreed)
+
+    def test_unverified_package_does_not_trust_the_ui_counter(self):
+        current = dict(status='available', reason='visible_order_card', ui_counter=[6, 6], next_available=None)
+        cases = (
+            dict(packageVersion='98', orderCapacity=dict(complete=False, reason='unverified_package_version',
+                 semanticsPackageVersion='98', entries=[])),
+            dict(packageVersion='100', orderCapacity=dict(complete=False, reason='incomplete',
+                 semanticsPackageVersion='100', entries=[])),
+        )
+        for data in cases:
+            with patch.object(board, 'read_availability', return_value=current), patch.object(board, 'screenshot'), \
+                    patch.object(decoded, 'enabled', return_value=True), patch.object(decoded, 'validate'), \
+                    patch.object(decoded, 'snapshot', return_value=data):
+                with self.assertRaises(decoded.DecodeError):
+                    board.probe_availability(None, None, 'party', required_count=6)
+
     def test_waiting_capacity_stops_scanner_before_another_pass(self):
         for status in ('order_capacity_exhausted','order_batch_unavailable'):
             with patch.object(cycle,'run_script') as run,patch.object(cycle,'read_json',return_value={'status':status}):
