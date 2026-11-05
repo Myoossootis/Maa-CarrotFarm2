@@ -200,6 +200,35 @@ class FarmHudModelTests(unittest.TestCase):
 
 
 class FarmHudWindowTests(unittest.TestCase):
+    def test_lion_page_and_open_game_button_are_readonly(self):
+        import tkinter as tk
+        from tools import game_launcher
+        root = tk.Tk()
+        root.withdraw()
+        try:
+            desk = farm_hud.FarmHud(root, load_cache=False, capture_frames=False)
+            desk.show('lion')
+            for width in (1360, 1100):
+                root.geometry(f'{width}x820')
+                root.update_idletasks()
+                self.assertEqual(desk.page, 'lion')
+            with patch.object(game_launcher, 'request_open', return_value='尚未确认进入游戏') as open_game:
+                desk.open_game()
+                open_game.assert_called_once()
+                self.assertIn('尚未确认', desk.log_lines[-1])
+            with patch.object(farm_hud, 'read_live', side_effect=RuntimeError('board not loaded')) as read:
+                desk.refresh()
+                import time
+                deadline = time.monotonic() + 2
+                while desk.results.empty() and time.monotonic() < deadline:
+                    time.sleep(.01)
+                desk.poll()
+                self.assertEqual(read.call_args.kwargs['mode'], 'all')
+                self.assertEqual(desk.link, '读取失败')
+            self.assertFalse(desk.task_run.active)
+        finally:
+            root.destroy()
+
     @unittest.skipUnless(tk_available(), 'tkinter display is unavailable')
     def test_autorun_is_the_first_page_and_monitor_keeps_the_log(self):
         import tkinter as tk

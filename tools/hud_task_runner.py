@@ -74,10 +74,15 @@ class LocalContext:
 
 
 def check_business_version(request):
-    """Reject unsupported business semantics before opening any game page."""
+    """Open the game if needed, then check semantics before task navigation."""
     entry = request['entry']
-    if entry in ('RunShortCyclePreview', 'ManualPlantingPreflight', 'CloseOfflineIncome') or (
+    if entry == 'RunShortCyclePreview' or (
             entry == 'RunShortCycle' and request['options']['周期运行模式'] == '仅预览'):
+        return
+    from tools.game_launcher import ensure_open
+    from tools.task_control import check_cancelled
+    ensure_open(check_cancelled=check_cancelled)
+    if entry in ('ManualPlantingPreflight', 'CloseOfflineIncome'):
         return
     from tools import decoded_runtime as decoded
     data = decoded.snapshot()

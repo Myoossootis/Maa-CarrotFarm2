@@ -96,8 +96,8 @@ def _clock_present(value):
 def _token_rows(capacity):
     """Non-expired token rows when the entry actually carries them.
 
-    `order_capacity` does not attach bag rows. No `records` key means this
-    probe cannot see the bag, so the caller treats remaining 0 as empty.
+    An explicit decoder emptyTokenCache flag is also required by the caller.
+    Absence of records here cannot prove absence in the underlying bag.
     """
     records = capacity.get('records')
     if not records:
@@ -120,6 +120,8 @@ def empty_token_cache(capacity):
     A boolean `SAVE_KEY_COMMON` slot is not a clock and is not on this entry.
     """
     if not isinstance(capacity, dict) or type(capacity.get('remaining')) is not int or capacity['remaining'] != 0:
+        return False
+    if capacity.get('emptyTokenCache') is not True:
         return False
     if _token_rows(capacity):
         return False

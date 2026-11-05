@@ -79,8 +79,8 @@ test('packages 99 and 100 reuse the capacity contract; unverified packages do no
     assert.equal(filled.semanticsPackageVersion,version);
     assert.equal(filled.reason,undefined);
     assert.deepEqual(filled.entries,[
-      {category:'party',tokenItemId:103,remaining:2,limit:6},
-      {category:'takeout',tokenItemId:104,remaining:6,limit:6},
+      {category:'party',tokenItemId:103,remaining:2,limit:6,emptyTokenCache:false},
+      {category:'takeout',tokenItemId:104,remaining:6,limit:6,emptyTokenCache:false},
     ]);
     const none=orderCapacityOf({records:[]},config);
     assert.equal(none.complete,true);
@@ -135,6 +135,18 @@ function cdConfig(){
   config.outputs.get(502).params='day_limit,6';
   return config;
 }
+
+test('UI fallback evidence survives decoding only when both live token rows and recovery clock are absent',()=>{
+  const config=cdConfig(),now=1762300800;
+  assert.equal(orderCapacityOf({records:[]},config,now).entries[0].emptyTokenCache,true);
+  const zeroRow=orderCapacityOf({records:[{itemId:103,count:0}]},config,now).entries[0];
+  assert.equal(zeroRow.remaining,0);
+  assert.equal(zeroRow.emptyTokenCache,false);
+  const clock=orderCapacityOf({records:[]},config,now,{103:{refresh_time:now+100}}).entries[0];
+  assert.equal(clock.remaining,0);
+  assert.equal(clock.emptyTokenCache,false);
+  assert.equal(orderCapacityOf({records:[]},config,now,{104:true}).entries[1].emptyTokenCache,true);
+});
 
 function shanghaiMidnight(unix){
   const offset=8*3600;
@@ -244,6 +256,55 @@ test('missing shared progress is null; personal progress can supply occupied tas
   assert.deepEqual(progressOf({tk_c:''},null,172),{current:null,target:172,available:false,source:'not_provided',checks:[]});
   assert.equal(progressOf({tk_c:''},[1,3879,1,'tk_c,3944_42;status,1'],172).current,42);
   assert.equal(progressOf({tk_c:'3944_0'},null,172).current,0);
+});
+
+test('family context reads self and season from records, keeps quota raw, and includes restaurant duty',()=>{
+  const {familyContextOf}=require('./read_only_game_state.cjs');
+  const rows=[
+    {uid:1,itemId:3628,extra:{plrd:'1:7@4:同名玩家',r_id:'8'}},
+    {uid:2,itemId:3921,extra:{season:'126'}},
+    {uid:3,itemId:3956,count:19,extra:{},expiresAt:null},
+    {uid:100,itemId:181,name:'员工甲',type:5,extra:{lv:'4'}},
+    {uid:200,itemId:5,name:'餐厅',type:3,extra:{equip_ids:'100_101'}},
+    {uid:300,itemId:23,type:2,extra:{equip_ids:'100'}}
+  ];
+  const result=familyContextOf({records:rows});
+  assert.equal(result.selfUid,7);
+  assert.equal(result.familyUid,8);
+  assert.equal(result.season,126);
+  assert.equal(result.periodTarget,26);
+  assert.equal(result.completed,null);
+  assert.equal(result.quotaVerified,false);
+  assert.equal(result.rawQuotaRows[0].count,19);
+  assert.deepEqual(result.staff[0].posts,[{buildingUid:200,buildingItemId:5,buildingName:'餐厅'}]);
+  assert.equal(familyContextOf({records:[...rows,rows[0]]}).selfUid,null);
+  assert.equal(familyContextOf({records:[]}).selfUid,null);
+});
+
+test('structured UP harvest, restaurant, stars, and forward upgrade are independent from upgraded flag',()=>{
+  const {config,records}=fixture();
+  config.items.set(173,{item_type:7});
+  config.items.get(3879).params='mutation_id,4000';
+  config.tasks.set(4000,{check_condi:'3944,181,3948,6',reward_box_id:1});
+  let task=familyFromRecords(records,[],config,100).tasks[0];
+  assert.equal(task.requirement.kind,'harvest');
+  assert.equal(task.requirement.staffItemId,2013);
+  assert.equal(task.requirement.productItemId,173);
+  assert.equal(task.requirement.count,172);
+  assert.equal(task.canUpgrade,true);
+  assert.equal(task.upgradeItemId,4000);
+  assert.equal(task.isUpgraded,false);
+  config.tasks.get(3879).check_condi='3944,181,3948,6';
+  task=familyFromRecords(records,[],config,100).tasks[0];
+  assert.equal(task.requirement.kind,'party_takeout');
+  assert.equal(task.requirement.workplace,'restaurant');
+  config.tasks.get(3879).check_condi='3949,30,6';
+  config.language.set('description','完成%[2]次%[1]星或以上的聚会、外卖订单');
+  task=familyFromRecords(records,[],config,100).tasks[0];
+  assert.deepEqual(task.requirement,{kind:'star_orders',stars:30,count:6});
+  config.tasks.get(3879).check_condi='999,181,3948,6';
+  task=familyFromRecords(records,[],config,100).tasks[0];
+  assert.equal(task.requirement.kind,'unknown');
 });
 
 function fixture(){
