@@ -34,6 +34,7 @@ class TaskDispatchTests(unittest.TestCase):
                         patch.object(sys, 'argv', ['runner', '--request', str(request_file)]), \
                         patch.object(runner, 'workflow_lock', return_value=nullcontext()), \
                         patch.object(runner, '_check_stop'), \
+                        patch('tools.game_launcher.ensure_open'), \
                         patch.object(decoded, 'snapshot', return_value={'packageVersion': package}), \
                         patch.object(decoded, 'validate'), patch.object(runner, 'execute') as execute, patch('builtins.print'):
                     self.assertEqual(runner.main(), 2)

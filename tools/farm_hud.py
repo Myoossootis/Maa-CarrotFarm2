@@ -48,6 +48,7 @@ STOP = '#e15b6a'
 PAGES = (
     ('monitor', '实时监控'),
     ('harvest', '订单与生产'),
+    ('lion', '狮王任务'),
     ('autorun', '自动运行设置'),
     ('settings', '设置'),
 )
@@ -586,7 +587,7 @@ class FarmHud:
             child.destroy()
         self.log_box = None
         {'monitor': self._page_monitor, 'harvest': self._page_harvest, 'autorun': self._page_autorun,
-         'settings': self._page_settings, 'dev': self._page_dev}[page]()
+         'lion': self._page_lion, 'settings': self._page_settings, 'dev': self._page_dev}[page]()
         self._paint_task_state()
 
     def refresh(self):
@@ -601,10 +602,11 @@ class FarmHud:
         self._paint_link()
         self.log('开始只读解码。')
         token = self.generation
+        mode = 'all' if self.page == 'lion' else 'automation'
 
         def work():
             try:
-                self.results.put((token, read_live(self.snapshot_path, mode='automation'), None))
+                self.results.put((token, read_live(self.snapshot_path, mode=mode), None))
             except Exception as error:
                 self.results.put((token, None, str(error)))
 
@@ -711,7 +713,7 @@ class FarmHud:
                 self.log('读取完成。未执行游戏操作。')
             self.link_var.set(self.link)
             self._paint_link()
-            if token == self.generation and self.page in ('monitor', 'harvest'):
+            if token == self.generation and self.page in ('monitor', 'harvest', 'lion'):
                 self.show(self.page)
         if self.page == 'monitor' and self.monitor is not None:
             process = self.monitor.process
@@ -760,6 +762,8 @@ class FarmHud:
         tk.Label(sidebar, text='开发工具', bg=WHITE, fg='#9aa3af', anchor='w',
                  font=(FONT, 9)).pack(side='top', fill='x', padx=22, pady=(8, 2))
         self._nav_row(sidebar, *DEV_PAGE)
+        tk.Button(bottom, text='打开游戏', command=self.open_game, bg=WHITE, fg=NAV,
+                  relief='flat', font=(FONT, 10)).pack(fill='x', pady=(0, 8))
         actions = tk.Frame(bottom, bg=WHITE)
         actions.pack(fill='x')
         read_border = tk.Frame(actions, bg=BLUE, padx=0, pady=0)
@@ -1041,6 +1045,30 @@ class FarmHud:
             return
         self.template_index = index
         self.show('autorun')
+
+    def open_game(self):
+        from tools.game_launcher import request_open
+        from tools.ui_worker import workflow_lock
+        if self.task_run.active:
+            self.log('已有任务运行；不另外触发游戏启动。')
+            return
+        try:
+            with workflow_lock():
+                self.log(request_open())
+        except (OSError, RuntimeError) as error:
+            self.log('打开游戏失败：' + str(error))
+
+    def _page_lion(self):
+        from tools.lion_workflow import review, lines
+        card = self.tk.Frame(self.stage, bg=WHITE, highlightbackground=LINE, highlightthickness=1)
+        card.pack(fill='both', expand=True)
+        self._card_title(card, '狮王任务检查', '优先本人已接UP，排除他人接取和升级预留；每期目标26')
+        self.tk.Button(card, text='只读刷新狮王', command=self.refresh, bg=WHITE, fg=NAV,
+                       relief='flat', font=(FONT, 10)).pack(anchor='w', padx=16, pady=(0, 8))
+        self.tk.Label(card, text='请先在游戏中打开狮王任务板以载入完整90槽，再点只读刷新。检查不会执行任务。',
+                      bg=WHITE, fg=MUTED, anchor='w', font=(FONT, 10)).pack(fill='x', padx=16, pady=(0, 8))
+        box = self._scroll_text(card)
+        self._fill_text(box, lines(review(self.snapshot)))
 
     def _page_settings(self):
         from tkinter import ttk

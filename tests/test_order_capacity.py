@@ -15,6 +15,11 @@ def capacity(remaining=0,kind='party'):
 
 
 class CapacityTests(unittest.TestCase):
+    def test_missing_empty_cache_evidence_cannot_authorize_ui_fallback(self):
+        current = dict(status='available', ui_counter=[6, 6])
+        result = board.apply_token_counter(current, capacity(0), 6)
+        self.assertEqual(result['status'], 'board_unknown')
+
     def data(self,remaining=0,version='90'):
         return dict(packageVersion=version,orderCapacity=dict(complete=True,semanticsPackageVersion=version,
                     entries=[capacity(remaining),capacity(0,'takeout')]))
@@ -88,6 +93,7 @@ class CapacityTests(unittest.TestCase):
     def _probe(self, counter, required, remaining=0, kind='party', **extra):
         current = dict(status='available', reason='visible_order_card', ui_counter=counter, next_available=None)
         row = capacity(remaining, kind)
+        row['emptyTokenCache'] = True
         row.update(extra)
         with patch.object(board, 'read_availability', return_value=current), patch.object(board, 'screenshot'), \
                 patch.object(decoded, 'enabled', return_value=True), \
