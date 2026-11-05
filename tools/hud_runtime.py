@@ -97,7 +97,7 @@ class TaskRun:
                                 pass
                         if 'Error:' in text or 'Exception:' in text:
                             text = '[错误] ' + text
-                        if show_in_ui(text) or text.startswith(('[任务]', '[预检]', '[排产]', '[员工安排]', '[刷新]', '[一号位]')):
+                        if show_in_ui(text) or text.startswith(('[任务]', '[狮王]', '[预检]', '[排产]', '[员工安排]', '[刷新]', '[一号位]')):
                             if lines.full():
                                 try:
                                     lines.get_nowait()

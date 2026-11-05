@@ -251,6 +251,52 @@ def leave_employee_ui_if_visible(controller: Win32Controller) -> None:
 def capacity(tasker: Tasker, frame) -> tuple[int, int] | None:
     if decoded.enabled():
         raise decoded.DecodeError('Image-only capacity read is disabled; an explicit decoded employee slot is required')
+    return _capacity_ocr(tasker, frame)
+
+
+def editor_capacity(tasker, frame, slot_id):
+    """Read the unsaved UI capacity only after an explicit idle slot check."""
+    if slot_id not in SLOTS or not decoded.enabled() or decoded.assignment_blocker(slot_id):
+        raise decoded.DecodeError('当前岗位不明或不空闲，不能读取排产容量')
+    if match(frame, 'work_plan_title.png', (235, 220, 270, 120)) < .75:
+        raise decoded.DecodeError('未识别空计划编辑器，不猜容量')
+    return _capacity_ocr(tasker, frame)
+
+
+def confirm_draft_capacity(controller, tasker, slot_id, total, limit):
+    """Correct only a positively observed unsaved deficit; never repeat save."""
+    for _ in range(4):
+        time.sleep(.6)
+        frame = screenshot(controller)
+        current = editor_capacity(tasker, frame, slot_id)
+        if current is None or current[1] != limit or not 0 <= current[0] <= total:
+            raise RuntimeError('草稿数量或容量未确认，禁止保存')
+        if current[0] == total:
+            time.sleep(.3)
+            if editor_capacity(tasker, screenshot(controller), slot_id) != current:
+                raise RuntimeError('草稿数量不稳定，禁止保存')
+            return frame
+        for _ in range(total - current[0]):
+            click(controller, 547, 953)
+    raise RuntimeError('草稿补齐未确认，禁止保存；保留编辑意图')
+
+
+def confirm_empty_editor_capacity(controller, tasker, slot_id, limit):
+    """Opening animation/OCR uncertainty may be reread, never clicked through."""
+    previous = None
+    for _ in range(6):
+        frame = screenshot(controller)
+        observed = editor_capacity(tasker, frame, slot_id)
+        if observed is not None and observed == previous:
+            if observed != (0, limit):
+                raise RuntimeError(f'当前员工容量或草稿不一致：{observed}，需要(0, {limit})，未编辑或保存')
+            return frame
+        previous = observed
+        time.sleep(.3)
+    raise RuntimeError('当前员工空计划容量未稳定确认，未编辑或保存')
+
+
+def _capacity_ocr(tasker, frame):
     patch = frame[410:443, 289:378]
     image = cv2.resize(patch, None, fx=3, fy=3, interpolation=cv2.INTER_CUBIC)
     job = tasker.post_recognition(
@@ -1006,11 +1052,13 @@ def configure_items(
     *,
     repeat: bool = False,
     before_save=None,
+    capacity_limit=None,
 ):
     slot = SLOTS[slot_id]
     if not items or any(count <= 0 for count in items.values()):
         raise RuntimeError("work plan requires positive quantities")
-    if sum(items.values()) > slot["capacity"]:
+    limit = slot['capacity'] if capacity_limit is None else capacity_limit
+    if type(limit) is not int or not 1 <= limit <= 1000 or sum(items.values()) > limit:
         raise RuntimeError(f"work plan exceeds {slot['label']} capacity")
     aliases = load_capabilities().get("product_aliases", {})
     normalized_items: dict[str, int] = {}
@@ -1027,6 +1075,8 @@ def configure_items(
         if blocker:
             raise decoded.DecodeError(f'{slot_id}: {blocker}; preserving existing employee and physical production')
     frame, button_y = open_plan(controller, slot_id)
+    if capacity_limit is not None:
+        frame = confirm_empty_editor_capacity(controller, tasker, slot_id, capacity_limit)
     if not decoded.enabled():
         current_capacity = capacity(tasker, frame)
         if current_capacity is None:
@@ -1065,6 +1115,8 @@ def configure_items(
             observed_item = icon_quantity(tasker, frame, crop)
             if observed_item != quantity:
                 raise RuntimeError(f"{crop} changed unexpectedly: expected {quantity}, got {observed_item}")
+    if capacity_limit is not None:
+        frame = confirm_draft_capacity(controller, tasker, slot_id, expected_total, capacity_limit)
     frame = ensure_repeat_checkbox(controller, frame, repeat=repeat, tasker=tasker)
     if match(frame, "arrange_button.png", (360, 985, 290, 145)) < 0.75:
         raise RuntimeError("arrange button not recognized")

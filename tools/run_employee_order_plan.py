@@ -211,6 +211,7 @@ def apply_jobs(allocation: dict, checkpoint=None, operation=None, *, allow_parti
                 operations.begin_edit(operation, job['slot_id'], job['items'], decoded.snapshot())
             result = configure_items(
                 controller, tasker, job["slot_id"], job["items"], repeat=False,
+                **({'capacity_limit': job['capacity_limit']} if 'capacity_limit' in job else {}),
                 **({'before_save': lambda data, slot=job['slot_id']: operations.reserve_save(operation, slot, data)}
                    if operation else {})
             )

@@ -194,6 +194,14 @@ class FormalBackendTests(unittest.TestCase):
         self.assertEqual(reader.assignment_blocker('field_1', data), 'missing_employee')
         self.assertIsNone(reader.assignment_blocker('field_1', state()))
 
+    def test_verified_target_area_is_usable_when_another_area_is_incomplete(self):
+        data = state()
+        data['production']['complete'] = False
+        data['production']['buildings'][0]['complete'] = True
+        self.assertIsNone(reader.assignment_blocker('field_1', data))
+        data['production']['buildings'][0]['complete'] = False
+        self.assertEqual(reader.assignment_blocker('field_1', data), 'production_state_incomplete')
+
     def test_configure_uses_same_clicks_but_only_postsave_decoded_quantity_check(self):
         # Every game/UI method is mocked; this does not send any input.
         with patch.object(reader, 'assignment_blocker', return_value=None), \

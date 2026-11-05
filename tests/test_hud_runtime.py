@@ -43,6 +43,7 @@ class TaskDispatchTests(unittest.TestCase):
 
     def test_all_thirteen_templates_dispatch_to_original_workers_with_correct_mode(self):
         expected = {
+            'RunOwnLionUP': ('run_lion_task.py', True),
             'RunDailyBatchOrders': ('run_daily_orders.py', True),
             'RunDailyPartyOrders': ('run_daily_orders.py', True),
             'RunDailyTakeoutOrders': ('run_daily_orders.py', True),
@@ -347,6 +348,8 @@ class TaskButtonsTests(unittest.TestCase):
         root.withdraw()
         try:
             desk = farm_hud.FarmHud(root, load_cache=False, capture_frames=False)
+            desk.template_index = next(i for i, item in enumerate(desk.templates) if item['entry'] == 'RunNormalOrderLoop')
+            desk.show('autorun')
             variable = desk.task_option_vars['普通循环设置']['maximum']
             variable.set('7')
             desk.reading = True

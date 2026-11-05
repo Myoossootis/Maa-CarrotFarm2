@@ -38,6 +38,14 @@ class CloseOfflineIncome(CustomAction):
         return run_cycle_worker([], is_stopping=stopping, script='dismiss_offline_income.py')
 
 
+class RunOwnLionUP(CustomAction):
+    def run(self, context, argv) -> bool:
+        stopping = lambda: context.tasker.stopping
+        if stopping() or not wait_for_background_ready(is_stopping=stopping):
+            return False
+        return run_cycle_worker(['--apply'], is_stopping=stopping, script='run_lion_task.py')
+
+
 class EnterRestaurant(CustomAction):
     def run(self, context, argv) -> bool:
         stopping = lambda: context.tasker.stopping

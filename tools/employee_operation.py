@@ -73,6 +73,10 @@ def begin(allocation, root=None):
 
 def validate_target(allocation, data):
     decoded.validate(data)
+    if allocation.get('bound_lion'):
+        from tools.lion_task_operation import validate_task
+        validate_task(allocation['bound_lion'], data, producing=True)
+        return
     target = allocation.get('bound_target') or {}
     order = next((row for row in data['orders'] if row['category'] == 'normal'
                   and row['uid'] == target.get('game_order_uid')), None)
@@ -143,7 +147,7 @@ def reserve_save(record, slot, data):
     entry = read(path)
     if not entry or entry['status'] != 'editing' or owner(slot, data) != entry['owner']:
         raise decoded.DecodeError('Save identity changed; no save input')
-    if record['allocation'].get('bound_target'):
+    if record['allocation'].get('bound_target') or record['allocation'].get('bound_lion'):
         validate_target(record['allocation'], data)
     if decoded.assignment_blocker(slot, data) or data['employees']['repeatEnabled'] is not False:
         raise decoded.DecodeError('Production changed while editing; no save input')
