@@ -184,9 +184,12 @@ function inventoryOf(bag,config,now){
 
 // Party/takeout count semantics checked on every read for these packages only.
 // 90: client refreshOrderCount / showPanelNeedFood / acceptOrder, 2026-10-25.
-// 99: same cfg contract as 90 (order 101/102 → ref_id token, item_type 24,
-// output type 2, limit 1–6). Other packages stay incomplete; do not infer 0.
-const VERIFIED_CAPACITY_PACKAGES=new Set(['90','99']);
+// 99 and 100: same cfg contract as 90 (order 101/102 → ref_id token, item_type 24,
+// output type 2, limit 1–6). 100 was confirmed on a live MMKV read 2026-11-05;
+// empty 103/104 inventory is remaining 0, not an unverified gate. No client
+// package is in this repo, so there is no SceneGuestOrderLogic byte check.
+// Other packages stay incomplete; do not infer 0.
+const VERIFIED_CAPACITY_PACKAGES=new Set(['90','99','100']);
 const CAPACITY_ORDERS=[['party',101],['takeout',102]];
 // Verified token identity from the v90 static check. ref_id is still read from
 // config; a different id fails closed instead of being treated as that balance.

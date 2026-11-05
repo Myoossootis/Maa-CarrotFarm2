@@ -24,12 +24,16 @@ sys.modules.setdefault('tools.decoded_runtime', sys.modules[__name__])
 ROOT = Path(__file__).resolve().parents[1]
 _selection = ContextVar('decoded_order_selection', default=None)
 
-# Ordinary-order / employee-plan path. Package 99 reuses the 98 ViewFarm timing
-# (byte-identical getOutputProgress, CROP_IDX, OUTPUT_TYPE, SRATE).
-# Party/takeout capacity uses the same cfg contract on 90 and 99. Package 98
-# stays out until that contract is rechecked for it.
-VERIFIED_NORMAL_PACKAGES = frozenset({'90', '98', '99'})
-VERIFIED_CAPACITY_PACKAGES = frozenset({'90', '99'})
+# Ordinary-order package-string gate. Packages 90, 98 and 99 have checked
+# normal-order semantics (99 reuses the 98 ViewFarm timing: byte-identical
+# getOutputProgress, CROP_IDX, OUTPUT_TYPE, SRATE). Package 100 is listed so
+# automation reads do not fail closed on the package string alone; its
+# production timing is not verified and is not claimed here.
+# Party/takeout capacity uses the same cfg contract on 90, 99 and 100
+# (100 checked live 2026-11-05). Package 98 stays out of capacity until that
+# contract is rechecked for it.
+VERIFIED_NORMAL_PACKAGES = frozenset({'90', '98', '99', '100'})
+VERIFIED_CAPACITY_PACKAGES = frozenset({'90', '99', '100'})
 
 
 class DecodeError(RuntimeError):

@@ -1,6 +1,6 @@
 # 聚会／外卖次数已核对的包版本
 
-日期：2026-11-04。只读解码每次从当前客户端配置复核契约，不按版本字符串直接填余额。未列入的包版本保持 `orderCapacity.complete=false`、`entries=[]`、`reason=unverified_package_version`，不能当成 0 次。
+日期：2026-11-05。只读解码每次从当前客户端配置复核契约，不按版本字符串直接填余额。未列入的包版本保持 `orderCapacity.complete=false`、`entries=[]`、`reason=unverified_package_version`，不能当成 0 次。
 
 ## 已核对
 
@@ -8,8 +8,9 @@
 | --- | --- | --- |
 | 90 | 放行 | 2026-10-25 静态核对 `SceneGuestOrderLogic.refreshOrderCount`、`SceneGuestOrderView.showPanelNeedFood`、`acceptOrder`，以及配置关联。见 [次数验证](ORDER_CAPACITY_2026-10-25.md)。 |
 | 99 | 放行 | 与 90 使用同一条配置契约，在每次读取时核对，不是只比较版本号。本仓库没有客户端包，因此没有在此环境重新对照 99 的 `SceneGuestOrderLogic` 字节。 |
+| 100 | 放行 | 与 90／99 使用同一条配置契约，在每次读取时核对。2026-11-05 实机 MMKV（Asia/Singapore）读到 `packageVersion` 100：订单 101／102 的 `ref_id` 为 103／104，`item_type` 24，产出类型 2，上限 6。103／104 库存为空，所以 `remaining` 为 0，这是次数用尽，不是未核对。本仓库没有客户端包，没有对照 100 的 `SceneGuestOrderLogic` 字节。 |
 
-98 的生产计时已另行核对，聚会／外卖次数没有纳入。100 及其他版本同样不放行。
+98 的生产计时已另行核对，聚会／外卖次数没有纳入，仍然拦截。未列入的其他版本同样不放行。客户端 100 也列入普通订单的包版本字符串白名单，避免自动化读取只因版本号失败关闭；100 的生产计时没有核对，生产模块仍把该版本标成未核对。
 
 ## 每次读取要满足的契约
 
@@ -21,16 +22,16 @@
 - 道具 `params.output_id` 指向 `cfg_output`，且 `item_id` 等于该道具、`type` 为 **2**、`limit` 为 **1–6** 的整数。
 - `remaining` 只累加该道具未过期的库存记录。没有有效记录时，在契约通过之后记为 **0**，`complete` 仍为真。负数、非整数或溢出则失败。
 
-Node `orderCapacityOf` 与 Python `decoded_runtime.order_capacity` 都只接受 90 和 99。Python 还要求 `semanticsPackageVersion` 等于当前 `packageVersion`，并且条目身份仍是 103／104。
+Node `orderCapacityOf` 与 Python `decoded_runtime.order_capacity` 都只接受 90、99 和 100。Python 还要求 `semanticsPackageVersion` 等于当前 `packageVersion`，并且条目身份仍是 103／104。
 
 ## 余额为 0 时仍然不会交单
 
-契约通过且库存没有 103／104 时，快照类似：
+契约通过且库存没有 103／104 时，快照类似。2026-11-05 客户端 100 的实机读取就是这一形状：
 
 ```json
 {
   "complete": true,
-  "semanticsPackageVersion": "99",
+  "semanticsPackageVersion": "100",
   "entries": [
     {"category": "party", "tokenItemId": 103, "remaining": 0, "limit": 6},
     {"category": "takeout", "tokenItemId": 104, "remaining": 0, "limit": 6}
@@ -38,4 +39,4 @@ Node `orderCapacityOf` 与 Python `decoded_runtime.order_capacity` 都只接受 
 }
 ```
 
-正式流程会把该结果与界面分子分母比较。界面也是 0/6 时返回 `order_capacity_exhausted` 并等待；小于请求批次时返回 `order_batch_unavailable`；对不上则 `board_unknown` 并停止。不购买次数，不退回 OCR 填余额。
+正式流程会把该结果与界面分子分母比较。界面也是 0/6 时返回 `order_capacity_exhausted` 并等待，直到出现 103／104；小于请求批次时返回 `order_batch_unavailable`；对不上则 `board_unknown` 并停止。不购买次数，不退回 OCR 填余额。90 与 99 在同一契约下余额为 0 时同样等待。

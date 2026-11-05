@@ -24,6 +24,8 @@ class CapacityTests(unittest.TestCase):
         with patch.object(decoded,'validate'):
             self.assertEqual(decoded.order_capacity('party',data)['remaining'],6)
             self.assertEqual(decoded.order_capacity('party',self.data(6,'99'))['remaining'],6)
+            self.assertEqual(decoded.order_capacity('party',self.data(0,'100'))['remaining'],0)
+            self.assertEqual(decoded.order_capacity('party',self.data(6,'100'))['remaining'],6)
             for invalid in ({},dict(data,packageVersion='91'),dict(data,packageVersion='98'),
                             dict(data,packageVersion='99'),dict(data,packageVersion='100'),
                             dict(data,orderCapacity={'complete':False, 'reason':'unverified_package_version'}),
@@ -32,21 +34,32 @@ class CapacityTests(unittest.TestCase):
                             self.data(True),self.data(-1)):
                 with self.assertRaises(decoded.DecodeError):decoded.order_capacity('party',invalid)
 
-    def test_package_99_allows_normal_orders_and_verified_party_takeout_capacity(self):
+    def test_packages_99_and_100_share_capacity_without_claiming_100_production(self):
         self.assertEqual(decoded.require_normal_package({'packageVersion': '99'}), '99')
-        self.assertEqual(decoded.VERIFIED_CAPACITY_PACKAGES, frozenset({'90', '99'}))
-        self.assertIn('98', decoded.VERIFIED_NORMAL_PACKAGES)
+        self.assertEqual(decoded.require_normal_package({'packageVersion': '100'}), '100')
+        self.assertEqual(decoded.VERIFIED_CAPACITY_PACKAGES, frozenset({'90', '99', '100'}))
+        self.assertEqual(decoded.VERIFIED_NORMAL_PACKAGES, frozenset({'90', '98', '99', '100'}))
         self.assertNotIn('98', decoded.VERIFIED_CAPACITY_PACKAGES)
-        with self.assertRaisesRegex(decoded.DecodeError, "100.*unverified"):
-            decoded.require_normal_package({'packageVersion': '100'})
-        data = self.data(6, '99')
+        with self.assertRaisesRegex(decoded.DecodeError, "101.*unverified"):
+            decoded.require_normal_package({'packageVersion': '101'})
         with patch.object(decoded, 'validate'):
-            party = decoded.order_capacity('party', data)
-            takeout = decoded.order_capacity('takeout', data)
-            self.assertEqual(party['tokenItemId'], 103)
-            self.assertEqual(party['remaining'], 6)
-            self.assertEqual(takeout['tokenItemId'], 104)
-            self.assertEqual(takeout['remaining'], 0)
+            for version in ('99', '100'):
+                empty = self.data(0, version)
+                party = decoded.order_capacity('party', empty)
+                takeout = decoded.order_capacity('takeout', empty)
+                self.assertEqual(party['tokenItemId'], 103)
+                self.assertEqual(party['remaining'], 0)
+                self.assertEqual(takeout['tokenItemId'], 104)
+                self.assertEqual(takeout['remaining'], 0)
+                self.assertEqual(decoded.order_capacity('party', self.data(6, version))['remaining'], 6)
+                bad = self.data(0, version)
+                bad['orderCapacity']['entries'][0]['tokenItemId'] = 105
+                with self.assertRaisesRegex(decoded.DecodeError, 'identity'):
+                    decoded.order_capacity('party', bad)
+                limited = self.data(0, version)
+                limited['orderCapacity']['entries'][0]['limit'] = 7
+                with self.assertRaisesRegex(decoded.DecodeError, 'invalid'):
+                    decoded.order_capacity('party', limited)
             with self.assertRaisesRegex(decoded.DecodeError, "98.*unverified"):
                 decoded.order_capacity('party', self.data(6, '98'))
 

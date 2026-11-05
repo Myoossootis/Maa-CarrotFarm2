@@ -1,5 +1,12 @@
 # 版本记录
 
+## 0.13.4 — 2026-11-05
+
+- 聚会／外卖次数对客户端 100 使用与 90、99 相同的配置契约：订单物品 101／102 的 `ref_id` 必须仍指向 103／104，道具类型 24，关联 `cfg_output` 类型 2 且上限为 1–6。通过后 `orderCapacity.complete` 为真，余额只累加未过期库存。2026-11-05 实机 MMKV 读到该契约，103／104 库存为空，所以 `remaining` 为 0；这是明确的 0，不是未核对。界面也是 0/6 时正式流程返回 `order_capacity_exhausted` 并等待，直到出现次数道具。契约对不上会抛出具体配置错误，不会把次数写成 0。
+- 98 以及其他未列入的包版本仍返回 `unverified_package_version` 和空 `entries`。Python `order_capacity` 接受 90、99 与 100，且 `semanticsPackageVersion` 必须等于当前包版本。
+- 普通订单的包版本字符串检查把 100 列入白名单，避免自动化读取只因版本号失败关闭。100 的生产计时没有核对，不写入生产语义；生产槽位仍是未判定，`semanticsPackageVersion` 仍为空。本仓库没有客户端包，没有对照 100 的 `SceneGuestOrderLogic` 字节。
+- 验证：Node 容量回归与 `tests/test_order_capacity.py`。本次没有游戏点击，不购买次数，也不改聚会／外卖的交单或生产配方。见 [次数包版本](docs/ORDER_CAPACITY_PACKAGES.md)。
+
 ## 0.13.3 — 2026-11-04
 
 - 聚会／外卖次数对客户端 99 使用与 90 相同的配置契约：订单物品 101／102 的 `ref_id` 必须仍指向 103／104，道具类型 24，关联 `cfg_output` 类型 2 且上限为 1–6。通过后 `orderCapacity.complete` 为真，余额只累加未过期库存；没有记录是明确的 0，不是未核对。契约对不上会抛出具体配置错误，不会把次数写成 0。
