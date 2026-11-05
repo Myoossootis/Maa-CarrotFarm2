@@ -156,7 +156,7 @@ def dispatch(args, forwarded):
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument('script', choices=['reconcile_production.py', 'run_manual_planting.py', 'run_feed_production.py', 'cycle', 'ensure_ranch_feed.py', 'check_first_orders.py', 'refresh_order.py', 'complete_normal_orders.py', 'complete_batch_orders.py', 'run_employee_order_plan.py', 'monitor_employee_products.py', 'dismiss_offline_income.py', 'enter_restaurant.py', 'enter_farm.py', 'open_phone.py', 'open_employee_config.py', 'select_farm_employment.py', 'open_field_detail.py', 'return_employee_list.py', 'locate_field_2.py', 'open_work_plan.py', 'close_work_plan.py', 'verify_slot_work_plan.py', 'run_daily_orders.py', 'run_normal_order_loop.py', 'run_lion_task.py', 'run_lion_acquisition.py'])
+    parser.add_argument('script', choices=['reconcile_production.py', 'run_manual_planting.py', 'run_feed_production.py', 'cycle', 'ensure_ranch_feed.py', 'check_first_orders.py', 'refresh_order.py', 'complete_normal_orders.py', 'complete_batch_orders.py', 'run_employee_order_plan.py', 'monitor_employee_products.py', 'dismiss_offline_income.py', 'enter_restaurant.py', 'enter_farm.py', 'open_phone.py', 'open_employee_config.py', 'select_farm_employment.py', 'open_field_detail.py', 'return_employee_list.py', 'locate_field_2.py', 'open_work_plan.py', 'close_work_plan.py', 'verify_slot_work_plan.py', 'run_daily_orders.py', 'run_normal_order_loop.py', 'run_lion_task.py', 'run_lion_acquisition.py', 'run_lion_loop.py'])
     args, forwarded = parser.parse_known_args()
     if inherits_cycle_lock():
         os.environ.setdefault('CARROT_UI_PARENT_PID', os.environ['CARROT_UI_CYCLE_OWNER'])

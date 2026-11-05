@@ -254,5 +254,32 @@ class AcquisitionTests(unittest.TestCase):
         with self.assertRaisesRegex(decoded.DecodeError,'占用改变'):runner.run(record,ui,read=lambda:next(reads))
         ui.accept.assert_not_called()
 
+    def test_conflicting_other_slot_is_excluded_and_personal_unknown_slot_blocks_new_accept(self):
+        data=snapshot(up());data['familyContext']['personalTasks']=[]
+        unknown=dict(slot=1,uid=None,taskItemId=None,status='unknown',cacheConflict=True,conflictingUids=[1001],
+                     acceptor=None,upgrader=None,requirement=dict(kind='unknown'))
+        data['family']['tasks'][0]=unknown
+        self.assertEqual(policy.choose(data)[0],'candidate')
+        data=accept(data)
+        data['familyContext']['personalTasks']=[dict(uid=500,slotUid=1066,taskItemId=3875,status=1)]
+        self.assertEqual(policy.choose(data)[0],'own')
+        data['family']['tasks'][65]=dict(unknown,slot=66,conflictingUids=[1066])
+        with self.assertRaisesRegex(decoded.DecodeError,'不能接取新任务'):policy.choose(data)
+
+    def test_accept_result_and_bound_task_use_current_personal_instance_not_an_old_heap_owner(self):
+        before=snapshot(up());before['familyContext']['personalTasks']=[]
+        record=self.begin(before);source=before['family']['tasks'][65]
+        policy.intent(record,'accept',source,before)
+        after=accept(before)
+        descriptor=dict(up(),uid=500,slotUid=1066,status=1,deadlineUnix=int(datetime.now(timezone.utc).timestamp())+3600)
+        after['familyContext']['personalTasks']=[descriptor]
+        after['family']['tasks'][65]=dict(slot=66,uid=None,taskItemId=None,status='unknown',cacheConflict=True,
+            conflictingUids=[1066],acceptor=None,upgrader=None,requirement=dict(kind='unknown'))
+        self.assertTrue(policy.confirm(record,after))
+        self.assertEqual(policy.bound_task(record,after)['uid'],1066)
+        ui=Mock()
+        self.assertEqual(runner.run(record,ui,read=lambda:after)['slot'],66)
+        ui.accept.assert_not_called();ui.upgrade.assert_not_called();ui.refresh.assert_not_called()
+
 
 if __name__=='__main__':unittest.main()

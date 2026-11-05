@@ -19,10 +19,17 @@ def context(data):
         raise decoded.DecodeError('狮王接取／刷新仅核对客户端100，未发送输入')
     if any(type(ctx.get(k)) is not int or ctx[k] <= 0 for k in ('selfUid', 'familyUid', 'season')):
         raise decoded.DecodeError('本人、家族或期数不完整')
+    known=[t for t in tasks if not (t.get('status')=='unknown' and t.get('cacheConflict') is True)]
     if (len(tasks) != 90 or {t.get('slot') for t in tasks} != set(range(1, 91))
-            or len({t.get('uid') for t in tasks}) != 90):
+            or len({t.get('uid') for t in known}) != len(known)):
         raise decoded.DecodeError('需要90个唯一的当前狮王任务')
     for task in tasks:
+        if task.get('status')=='unknown' and task.get('cacheConflict') is True:
+            if (not isinstance(ctx.get('personalTasks'),list) or task.get('uid') is not None
+                    or task.get('taskItemId') is not None or not task.get('conflictingUids')
+                    or any(type(x) is not int or x<=0 for x in task['conflictingUids'])):
+                raise decoded.DecodeError('冲突槽位不能作为空位，且需要当前个人任务列表证明')
+            continue
         if any(type(task.get(k)) is not int or task[k] <= 0 for k in ('uid', 'taskItemId')):
             raise decoded.DecodeError('狮王任务身份无效')
         for key in ('acceptor', 'upgrader'):
@@ -66,9 +73,26 @@ def suitability(task, ctx):
     return True, '可做UP'
 
 
-def choose(data, *, skipped=()):
+def executable(task, ctx):
+    from tools.lion_task_operation import supports
+    final = task.get('upgrade') or task
+    req = final.get('requirement') or {}
+    return (supports(final) and any(s.get('itemId') == req.get('staffItemId')
+            and any(p.get('buildingItemId') in (12,284,285,17,723,28,286) for p in s.get('posts',[])) for s in ctx['staff']))
+
+
+def choose(data, *, skipped=(), supported_only=False):
     ctx = context(data)
     own = [t for t in data['family']['tasks'] if owned(t, ctx)]
+    personal=ctx.get('personalTasks')
+    if personal is not None:
+        if (not isinstance(personal,list) or any(type(p.get('status')) is not int or p['status'] not in (1,2,3,4)
+                or type(p.get('slotUid')) is not int or p['slotUid']<=0 for p in personal)):
+            raise decoded.DecodeError('本人个人任务状态或槽位引用未知，不能接新任务')
+        pending=[p for p in personal if p['status'] in (1,2)]
+        if (len(pending)>1 or len(own)!=len(pending)
+                or pending and (own[0]['uid']!=pending[0]['slotUid'] or own[0]['taskItemId']!=pending[0]['taskItemId'])):
+            raise decoded.DecodeError('本人在途任务与看板不一致或落在冲突槽，不能接取新任务')
     if len(own) > 1:
         raise decoded.DecodeError('发现多个本人任务，不自动选择')
     if own:
@@ -79,7 +103,7 @@ def choose(data, *, skipped=()):
         return 'quota_empty', None
     tasks = [t for t in data['family']['tasks'] if available(t, ctx) and t['slot'] not in skipped
              and t.get('deadlinePassed') is not True]
-    good = [t for t in tasks if suitability(t, ctx)[0]]
+    good = [t for t in tasks if suitability(t, ctx)[0] and (not supported_only or executable(t, ctx))]
     if good:
         # Prefer the already verified executor when both tasks otherwise qualify.
         from tools.lion_task_operation import supports
@@ -97,6 +121,28 @@ def personal(task, data):
     if len(rows) != 1 or str(rows[0].get('extra', {}).get('status')) not in ('1', '2'):
         raise decoded.DecodeError('个人任务实例未同步，不能继续点击')
     return rows[0]
+
+
+def bound_task(record,data):
+    """Current personal bag + the confirmed physical slot, never a chosen heap version."""
+    ctx=data.get('familyContext') or {}
+    items=ctx.get('personalTasks')
+    uid=record.get('managedSlotUid')
+    if not uid or items is None:
+        return None
+    current=[p for p in items if p.get('slotUid')==uid and p.get('status') in (1,2)]
+    if (len(current)!=1 or sum(p.get('status') in (1,2) for p in items)!=1
+            or any(p.get('status') not in (1,2,3,4) for p in items)):
+        raise decoded.DecodeError('已接任务的当前个人实例缺失或重复，不能接新任务')
+    proof=next((a for a in reversed(record['actions']) if a['slotUid']==uid and a['status']=='confirmed'),None)
+    if proof is None:
+        raise decoded.DecodeError('没有已确认槽位的操作证据')
+    task=deepcopy(current[0])
+    task.update(uid=uid,slot=proof['slot'],personalUid=current[0]['uid'],status='occupied',
+                acceptor=dict(uid=ctx['selfUid']),upgrader=None,source='personal_bag_with_confirmed_slot')
+    if type(task.get('deadlineUnix')) is not int or task['deadlineUnix']<=0:
+        raise decoded.DecodeError('个人任务截止时间未确认')
+    return task
 
 
 def save(record):
@@ -135,7 +181,7 @@ def intent(record, action, task, before, cost=0):
     if record['actions'] and record['actions'][-1]['status'] == 'intent':
         raise decoded.DecodeError('上次操作尚未确认，禁止再次点击')
     entry = dict(action=action, status='intent', slot=task['slot'], slotUid=task['uid'],
-                 taskItemId=task['taskItemId'], cost=cost, before=before)
+                 taskItemId=task['taskItemId'], cost=cost, before=before,sourceTask=deepcopy(task))
     if action in ('refresh', 'upgrade', 'quit'):
         entry['personalUid'] = personal(task, before)['uid']
     record['actions'].append(entry)
@@ -150,8 +196,16 @@ def confirm(record, after):
     if entry['status'] != 'intent':
         return True
     before = entry['before']
-    current = next(t for t in after['family']['tasks'] if t['uid'] == entry['slotUid'])
     ctx = after['familyContext']
+    current = next((t for t in (after.get('family') or {}).get('tasks',[]) if t['uid'] == entry['slotUid']),None)
+    # The personal MMKV instance is authoritative for our result even when a
+    # different family's board row is changing or our old heap tuple survives.
+    personal_rows=[p for p in ctx.get('personalTasks') or [] if p.get('slotUid')==entry['slotUid'] and p.get('status') in (1,2)]
+    if len(personal_rows)>1:
+        raise decoded.DecodeError('本人操作后的个人实例重复，禁止重发')
+    if personal_rows:
+        current={**personal_rows[0], 'uid':entry['slotUid'],'acceptor':dict(uid=ctx['selfUid']),
+                 'upgrader':dict(uid=ctx['selfUid']) if entry['action']=='upgrade' else None}
     quota_same = decoded.item_count(3956, before) == decoded.item_count(3956, after)
     voucher_delta = decoded.item_count(4030, before) - decoded.item_count(4030, after)
     # No pearl fallback, purchases, or unrelated account changes may be hidden.
@@ -162,9 +216,11 @@ def confirm(record, after):
         prior_cd = (before.get('familyContext') or {}).get('quitStartedUnix')
         cd = ctx.get('quitStartedUnix')
         gone = not any(r['uid'] == entry['personalUid'] for r in after['inventory']['records'])
-        proven = (current.get('acceptor') is None and current['taskItemId'] == entry['taskItemId'] and gone
-                  and type(cd) is int and cd > (prior_cd or 0) and quota_same and voucher_delta == 0 and pearls_same)
-    elif owned(current, ctx):
+        cleared=(ctx.get('personalTasks') is not None and not personal_rows or
+                 current is not None and current.get('acceptor') is None and current['taskItemId']==entry['taskItemId'])
+        proven = (cleared and gone and type(cd) is int and cd > (prior_cd or 0)
+                  and quota_same and voucher_delta == 0 and pearls_same)
+    elif current is not None and owned(current, ctx):
         try:
             row = personal(current, after)
         except decoded.DecodeError:
@@ -172,8 +228,8 @@ def confirm(record, after):
         if action == 'accept':
             proven = current['taskItemId'] == entry['taskItemId'] and quota_same and voucher_delta == 0 and pearls_same
         elif action == 'upgrade':
-            source = next(t for t in before['family']['tasks'] if t['uid'] == entry['slotUid'])
-            proven = (current['taskItemId'] == source['upgradeItemId'] and current.get('isUpgraded') is True
+            source = entry.get('sourceTask') or next((t for t in before['family']['tasks'] if t['uid'] == entry['slotUid']),None)
+            proven = (source is not None and current['taskItemId'] == source['upgradeItemId'] and current.get('isUpgraded') is True
                       and (current.get('upgrader') or {}).get('uid') == ctx['selfUid'])
         elif action == 'refresh':
             proven = current['taskItemId'] != entry['taskItemId'] or row['uid'] != entry['personalUid']

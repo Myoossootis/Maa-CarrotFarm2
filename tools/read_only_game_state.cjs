@@ -10,7 +10,7 @@ function extraOf(s){return Object.fromEntries(String(s||'').split(';').filter(Bo
 
 const ROOT=path.resolve(__dirname,'..');
 const APP='wx2d7c1a53c1bd45e1';
-const MODES=['inventory','orders','employees','production','automation','family','all','serve'];
+const MODES=['inventory','orders','employees','production','automation','lion_counter','family','all','serve'];
 const PRODUCT_TYPES=new Set([7,11,23,94]);
 
 function argumentsOf(argv){
@@ -139,7 +139,10 @@ function configuration(applet){
   const language=new Map((tables.get('cfg_language_cn')||[]).map(x=>[x.key,x.value]));
   const tasks=new Map((tables.get('cfg_task')||[]).filter(x=>x.type===121).map(x=>[x.item_id,x]));
   const bellRewards=new Map();
+  const dropBoxes=new Map();
   for(const row of tables.get('cfg_drop_box')||[]){
+    if(!dropBoxes.has(row.box_id)) dropBoxes.set(row.box_id,[]);
+    dropBoxes.get(row.box_id).push(row);
     if(row.item_id!==3638) continue;
     if(!bellRewards.has(row.box_id)) bellRewards.set(row.box_id,[]);
     bellRewards.get(row.box_id).push(row);
@@ -151,7 +154,7 @@ function configuration(applet){
   const prices=tables.get('cfg_price')||[];
   const lionLevels=(tables.get('cfg_level')||[]).filter(x=>x.type===7&&x.item_id===3921);
   const playerLevels=(tables.get('cfg_level')||[]).filter(x=>x.type===0&&x.item_id===0).sort((a,b)=>a.level-b.level);
-  return {version,items,language,tasks,bellRewards,orderLevels,outputs,prices,playerLevels,lionLevels,name};
+  return {version,items,language,tasks,bellRewards,dropBoxes,orderLevels,outputs,prices,playerLevels,lionLevels,name};
 }
 
 function itemAmounts(raw,config){
@@ -440,12 +443,20 @@ function taskDescription(id,config,includeUpgrade=true){
   const limit=Number(extraOf(config.items.get(5554)?.params).limit);
   const upgradeCost=upgrade&&config.version==='100'&&Number.isSafeInteger(limit)&&limit>0?
     {itemId:4030,count:Math.min(2*rewards[0].item_num_min-2,limit)}:null;
+  const rootRows=config.dropBoxes?.get(task.reward_box_id)||[];
+  const childRows=config.dropBoxes?.get(72100)||[];
+  const fixed=(row,item,count)=>row&&row.item_id===item&&row.item_num_min===count&&row.item_num_max===count&&
+    row.drop_type===1&&row.drop_rate===10000&&!row.action_id&&!row.non_item_id&&!row.need_player_level&&
+    !row.params&&!row.drop_num_min&&!row.drop_num_max;
+  const completionCounter=config.version==='100'&&rootRows.length===1&&childRows.length===1&&
+    fixed(rootRows[0],3638,rewards[0].item_num_min)&&String(rootRows[0].sub_box_ids)==='72100'&&
+    fixed(childRows[0],5740,1)&&!childRows[0].sub_box_ids?{itemId:5740,count:1,carrierItemId:2739}:null;
   return {text,condition:task.check_condi,target:description.startsWith('完成')?args[1]:args[2],
     durationSeconds:Number(params.expire_cd)||null,quality:item.quality,
     isRare:item.quality>0,rarity:item.quality>0?'rare':'normal',
     isUpgraded:Number(params.mutation_ref_id)>0,requirement,
     canUpgrade:upgradeItemId!==null&&config.tasks.has(upgradeItemId),upgradeItemId,upgrade,upgradeCost,
-    rewardBoxId:task.reward_box_id,
+    rewardBoxId:task.reward_box_id,completionCounter,
     bellReward:{itemId:3638,name:'铃铛',count:rewards[0].item_num_min,source:'task_configuration'}};
 }
 
@@ -475,6 +486,11 @@ function familyContextOf(inventory,config){
     quitStartedUnix,
     rules:config?.version==='100'?{quitCooldownSeconds:Number(extraOf(config.items.get(3921)?.params).cd),
       refreshTiers,voucherItemId:4030}:null,
+    personalTasks:config?.tasks?rows.filter(x=>config.tasks.has(x.itemId)).map(x=>({
+      ...familyTaskDefinition(x.itemId,x.extra,config),uid:x.uid,taskItemId:x.itemId,
+      slotUid:positive(x.extra.r_id),status:Number(x.extra.status),deadlineUnix:positive(x.expiresAt),
+      deadlinePassed:x.expiresAt?x.expiresAt<Date.now()/1000:null,
+      progress:{...progressOf(x.extra,null,familyTaskDefinition(x.itemId,x.extra,config).target),source:'personal_bag'}})):null,
     staff,notes:['3956余额不能直接换算本期已完成次数；接取／退出不扣减，完成领奖才扣减1。']};
 }
 
@@ -483,6 +499,62 @@ function progressOf(extra,personal,target){
   const checks=String(source.tk_c||'').split('#').filter(Boolean).map(x=>x.split('_').map(Number));
   return {current:checks.length===1?checks[0][1]:null,target,available:checks.length===1,
     source:personal?'personal_bag':checks.length?'shared_cache':'not_provided',checks};
+}
+
+function familyTaskDefinition(taskId,extra,config){
+  const definition=taskDescription(taskId,config);
+  if(extra.rws){
+    const items=itemAmounts(extra.rws,config),bell=items.find(x=>x.itemId===3638);
+    if(bell) definition.bellReward={itemId:3638,name:'铃铛',count:bell.count,source:'personal_or_shared_cache'};
+    if(items.some(x=>x.itemId!==3638&&(x.itemId!==5740||x.count!==1))) definition.completionCounter=null;
+  }
+  if(definition.upgradeCost) definition.upgradeCost.count=Math.min(2*definition.bellReward.count-2,
+    Number(extraOf(config.items.get(5554)?.params).limit));
+  return definition;
+}
+
+function familyPeriodOf(records,bag,now){
+  const current=bag.filter(x=>!x[4]||x[4]>=now);
+  const personal=current.filter(x=>x[1]===3921),family=current.filter(x=>x[1]===3628);
+  if(personal.length!==1||family.length!==1) return null;
+  const season=Number(extraOf(personal[0][3]).season);
+  const profile=String(extraOf(family[0][3]).plrd||'').split('@').find(x=>x.startsWith('1:'));
+  const self=Number(profile?.slice(2));
+  const integer=v=>/^\d+$/.test(String(v))&&Number.isSafeInteger(Number(v));
+  const matches=records.filter(x=>x.itemId===3921&&x.uid!==personal[0][0]).map(x=>{
+    const e=extraOf(x.extra);return {season:Number(e.season),endsUnix:Number(e.e_time),status:Number(e.status)};
+  }).filter(x=>Number.isSafeInteger(x.season)&&x.season>0&&Number.isSafeInteger(x.endsUnix)&&x.endsUnix>now&&Number.isSafeInteger(x.status));
+  const unique=[...new Map(matches.map(x=>[JSON.stringify(x),x])).values()];
+  if(unique.length!==1||unique[0].season!==season||!Number.isSafeInteger(self)||self<=0) return null;
+  const own=records.filter(x=>x.itemId===3972).map(x=>({uid:x.uid,extra:extraOf(x.extra)}))
+    .filter(x=>Number(x.extra.r_id)===self);
+  const values=own.map(x=>({completed:Number(x.extra.r_c),points:Number(x.extra.exp)}));
+  if(!own.length||own.some(x=>!integer(x.extra.r_c)||!integer(x.extra.exp))||new Set(values.map(x=>JSON.stringify(x))).size!==1) return null;
+  const names=records.filter(x=>x.itemId===3629).map(x=>{
+    const fields=String(extraOf(x.extra).plrd||'').split('@');
+    return {uid:Number(fields.find(s=>s.startsWith('1:'))?.slice(2)),name:fields.find(s=>s.startsWith('4:'))?.slice(2),
+      level:Number(fields.find(s=>s.startsWith('2:'))?.slice(2))};
+  });
+  const ownNames=[...new Set(names.filter(x=>x.uid===self&&x.name).map(x=>x.name))];
+  const selfName=ownNames.length===1?ownNames[0]:null;
+  const nameUids=new Set(names.filter(x=>x.name===selfName).map(x=>x.uid));
+  const personalFields=String(extraOf(family[0][3]).plrd||'').split('@');
+  const privateLevel=Number(personalFields.find(s=>s.startsWith('2:'))?.slice(2));
+  const ownLevels=[...new Set(names.filter(x=>x.uid===self).map(x=>x.level))];
+  const selfLevel=ownLevels.length===1&&ownLevels[0]===privateLevel&&Number.isSafeInteger(privateLevel)&&privateLevel>0?privateLevel:null;
+  const memberUids=new Set(names.map(x=>x.uid));
+  const scores=records.filter(x=>x.itemId===3972).map(x=>extraOf(x.extra)).map(e=>({uid:Number(e.r_id),completed:Number(e.r_c),points:Number(e.exp)}));
+  const cohortComplete=[...memberUids].every(uid=>Number.isSafeInteger(uid)&&uid>0&&
+    names.filter(x=>x.uid===uid).every(x=>Number.isSafeInteger(x.level)&&x.level>0)&&
+    scores.some(x=>x.uid===uid&&Number.isSafeInteger(x.completed)&&x.completed>=0&&Number.isSafeInteger(x.points)&&x.points>=0))&&
+    scores.every(x=>memberUids.has(x.uid));
+  // Treat every retained variant as possible. A conflicting other record can
+  // only make identity ambiguous; it can never be selected as the newest one.
+  const otherMatch=[...memberUids].some(uid=>uid!==self&&names.some(x=>x.uid===uid&&x.level===selfLevel)&&
+    scores.some(x=>x.uid===uid&&x.completed===values[0].completed&&x.points===values[0].points));
+  return {...unique[0],...values[0],source:'shared_3921_and_3972',selfUid:self,
+    selfName,selfNameUnique:selfName!==null&&nameUids.size===1,selfLevel,
+    identityTripleUnique:selfLevel!==null&&cohortComplete&&!otherMatch};
 }
 
 function familyFromRecords(records,bag,config,now){
@@ -494,24 +566,24 @@ function familyFromRecords(records,bag,config,now){
   for(const record of records.filter(x=>x.itemId===3931)){
     const extra=extraOf(record.extra),slot=Number(extra.idx);
     if(!(slot>=1&&slot<=90)||!config.tasks.has(Number(extra.r_id))) continue;
-    const previous=slots.get(slot);
-    if(previous&&(previous.uid!==record.uid||JSON.stringify(previous.extra)!==JSON.stringify(extra)))
-      throw Error('Conflicting cached versions of task slot '+slot+'; cannot safely choose a current value.');
-    slots.set(slot,{...record,extra});
+    const variants=slots.get(slot)||[];
+    if(!variants.some(x=>x.uid===record.uid&&JSON.stringify(x.extra)===JSON.stringify(extra))) variants.push({...record,extra});
+    slots.set(slot,variants);
   }
   if(slots.size!==90) throw Error('Incomplete shared board: '+slots.size+'/90 slots. Open the shared task board and retry.');
   const member=uid=>uid?{uid,name:members.get(uid)||null}:null;
-  const tasks=[...slots].sort((a,b)=>a[0]-b[0]).map(([slot,record])=>{
-    const extra=record.extra,taskId=Number(extra.r_id),definition=taskDescription(taskId,config);
+  const tasks=[...slots].sort((a,b)=>a[0]-b[0]).map(([slot,variants])=>{
+    if(variants.length!==1) return {slot,uid:null,taskItemId:null,status:'unknown',cacheConflict:true,
+      conflictingUids:[...new Set(variants.map(x=>x.uid))],acceptor:null,upgrader:null,
+      text:'槽位'+slot+'缓存版本冲突，本槽不参与选择',requirement:{kind:'unknown'},
+      progress:{available:false,current:null},isRare:null,isUpgraded:null,canUpgrade:null,bellReward:null};
+    const record=variants[0];
+    const extra=record.extra,taskId=Number(extra.r_id);
     const acceptorUid=Number(extra.lock)||0,upgraderUid=Number(extra.exp)||0,deadline=Number(extra.e_time)||null;
     const personal=bag.find(x=>config.items.get(x[1])?.item_type===13&&Number(extraOf(x[3]).r_id)===record.uid);
-    const rewardOverride=personal?extraOf(personal[3]).rws:extra.rws;
-    if(rewardOverride){
-      const bell=itemAmounts(rewardOverride,config).find(x=>x.itemId===3638);
-      if(bell) definition.bellReward={itemId:3638,name:'铃铛',count:bell.count,source:personal?'personal_bag':'shared_cache'};
-    }
-    if(definition.upgradeCost) definition.upgradeCost.count=Math.min(2*definition.bellReward.count-2,
-      Number(extraOf(config.items.get(5554)?.params).limit));
+    const definition=familyTaskDefinition(taskId,personal?extraOf(personal[3]):extra,config);
+    if((personal?extraOf(personal[3]).rws:extra.rws)&&definition.bellReward.source==='personal_or_shared_cache')
+      definition.bellReward.source=personal?'personal_bag':'shared_cache';
     return {slot,uid:record.uid,taskItemId:taskId,...definition,
       status:acceptorUid?'occupied':Number(extra.r_time)>now?'cooling_down':'unclaimed',
       acceptor:member(acceptorUid),upgrader:member(upgraderUid),upgradeCount:Number(extra.sp_c)||0,
@@ -522,8 +594,10 @@ function familyFromRecords(records,bag,config,now){
   for(const task of tasks){
     if((task.acceptor&&!task.acceptor.name)||(task.upgrader&&!task.upgrader.name)) throw Error('Family member names are incomplete; reopen the board and retry.');
   }
-  return {slotCount:tasks.length,occupiedCount:tasks.filter(x=>x.status==='occupied').length,
-    rareCount:tasks.filter(x=>x.isRare).length,upgradedCount:tasks.filter(x=>x.isUpgraded).length,tasks};
+  const unknownSlots=tasks.filter(x=>x.status==='unknown').map(x=>x.slot);
+  return {slotCount:tasks.length,complete:unknownSlots.length===0,unknownSlots,occupiedCount:tasks.filter(x=>x.status==='occupied').length,
+    rareCount:tasks.filter(x=>x.isRare).length,upgradedCount:tasks.filter(x=>x.isUpgraded).length,
+    period:familyPeriodOf(records,bag,now),tasks};
 }
 
 function familyOf(options,processes,hints,bag,config,now){
@@ -546,22 +620,33 @@ function familyOf(options,processes,hints,bag,config,now){
   throw incomplete||Error('No readable family board in running WeChatAppEx; open the shared task board first.');
 }
 
+function familyCounterOf(options,processes,hints,bag,now){
+  const ordered=[...processes].sort((a,b)=>Number(b.pid===hints.game?.pid)-Number(a.pid===hints.game?.pid)||b.workingSet-a.workingSet);
+  for(const process of ordered){
+    const result=bridge(options,{op:'records',pid:process.pid});
+    const period=familyPeriodOf(result.records,bag,now);
+    if(period){hints.game={pid:process.pid,born:process.born};return period;}
+  }
+  return null;
+}
+
 function buildReport(options,ctx){
   const {snapshot,state,hintUsed,config,processes,hints,timings,stage}=ctx;
   const now=Math.floor(Date.now()/1000),data={};
   const inventory=stage('inventoryMs',()=>inventoryOf(state.bag,config,now));
-  if(['inventory','automation','all'].includes(options.mode)) data.inventory=inventory;
-  if(['orders','automation','all'].includes(options.mode)){
+  if(['inventory','automation','all','lion_counter'].includes(options.mode)) data.inventory=inventory;
+  if(['orders','automation','all','lion_counter'].includes(options.mode)){
     data.orders=stage('ordersMs',()=>ordersOf(state.bag,config,inventory));
     data.orderCapacity=stage('orderCapacityMs',()=>orderCapacityOf(inventory,config,now,state.common));
   }
-  if(['employees','automation','all'].includes(options.mode)) data.employees=stage('employeesMs',()=>employeesOf(state.bag,state.common,config));
-  if(['production','automation','all'].includes(options.mode)) data.production=stage('productionMs',()=>productionOf(inventory,config,now,state.common));
+  if(['employees','automation','all','lion_counter'].includes(options.mode)) data.employees=stage('employeesMs',()=>employeesOf(state.bag,state.common,config));
+  if(['production','automation','all','lion_counter'].includes(options.mode)) data.production=stage('productionMs',()=>productionOf(inventory,config,now,state.common));
   if(['family','all'].includes(options.mode)){
     if(!processes) throw Error('Family board requires a fresh process list');
     data.family=stage('familyMs',()=>familyOf(options,processes,hints,state.bag,config,now));
   }
-  if(['family','all','automation'].includes(options.mode)) data.familyContext=familyContextOf(inventory,config);
+  if(options.mode==='lion_counter') data.family={period:stage('familyCounterMs',()=>familyCounterOf(options,processes,hints,state.bag,now))};
+  if(['family','all','automation','lion_counter'].includes(options.mode)) data.familyContext=familyContextOf(inventory,config);
   return {schemaVersion:1,mode:options.mode,readOnly:true,capturedAt:snapshot.capturedAt,completedAt:new Date().toISOString(),
     source:'local_client_cache',packageVersion:config.version,storageSequence:snapshot.sequence,keyAddressHintUsed:hintUsed,
     timings,notes:['Client cache snapshot; server state may have changed.','Occupied tasks can omit shared progress; null does not mean zero.','No game operation, network request, process write, or key persistence.'],...data};
@@ -668,5 +753,5 @@ function main(){
   process.stderr.write(JSON.stringify({mode:options.mode,timings,output:options.output||'stdout'})+'\n');
 }
 
-module.exports={readv,crc32,parseMMKV,unwrapValue,extraOf,progressOf,familyFromRecords,familyContextOf,inventoryOf,ordersOf,employeesOf,orderCapacityOf,VERIFIED_CAPACITY_PACKAGES,createReader};
+module.exports={readv,crc32,parseMMKV,unwrapValue,extraOf,progressOf,familyFromRecords,familyContextOf,familyPeriodOf,inventoryOf,ordersOf,employeesOf,orderCapacityOf,VERIFIED_CAPACITY_PACKAGES,createReader};
 if(require.main===module){try{main();}catch(error){process.stderr.write(JSON.stringify({error:error.message,readOnly:true})+'\n');process.exitCode=1;}}

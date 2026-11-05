@@ -11,9 +11,28 @@ ROOT = Path(__file__).resolve().parents[1] / '.tmp/lion_tasks'
 
 def supports(task):
     requirement = task.get('requirement') or {}
-    return (task.get('taskItemId') == 3875 and task.get('isUpgraded') is True
-            and requirement.get('kind') == 'harvest' and requirement.get('productItemId') == 29
-            and (task.get('bellReward') or {}).get('count') == 82)
+    legacy = ('completionCounter' not in task and task.get('taskItemId') == 3875 and requirement.get('productItemId') == 29
+              and (task.get('bellReward') or {}).get('count') == 82)
+    counter = task.get('completionCounter')
+    return (task.get('isUpgraded') is True and requirement.get('kind') == 'harvest'
+            and type((task.get('bellReward') or {}).get('count')) is int and task['bellReward']['count'] >= 80
+            and (legacy or counter == dict(itemId=5740, count=1, carrierItemId=2739))
+            and bool(production_slots(dict(productName=product_name(task)))))
+
+
+def product_name(task):
+    req = task.get('requirement') or {}
+    # Compatibility with the original apple receipt, which predates productName.
+    return req.get('productName') or ('苹果' if req.get('productItemId') == 29 else None)
+
+
+def production_slots(binding):
+    from tools.configure_field_employee import CROPS, SLOTS
+    from tools.employee_capabilities import slot_can_produce
+    name = binding.get('productName')
+    if name not in CROPS:
+        return ()
+    return tuple(slot for slot, entry in SLOTS.items() if slot_can_produce(entry, name))
 
 
 def acquisition_root(data):
@@ -75,36 +94,51 @@ def validate_task(binding, data, *, producing=False):
     return dict(current=current, status=state)
 
 
-def bind(data):
+def bind(data, *, selected=None):
     decoded.validate(data)
     context = data.get('familyContext') or {}
     if any(type(context.get(key)) is not int or context[key] <= 0 for key in ('selfUid', 'familyUid', 'season')):
         raise decoded.DecodeError('本人、家族或期数未确认')
-    tasks = (data.get('family') or {}).get('tasks', [])
-    if len(tasks) != 90:
-        raise decoded.DecodeError('本人任务绑定需要完整当前看板')
-    own = [t for t in tasks if (t.get('acceptor') or {}).get('uid') == context.get('selfUid')]
-    if len(own) != 1:
-        raise decoded.DecodeError('需要唯一的本人已接任务；不自动接新任务')
-    task = own[0]
+    if selected is None:
+        tasks = (data.get('family') or {}).get('tasks', [])
+        if len(tasks) != 90:
+            raise decoded.DecodeError('本人任务绑定需要完整当前看板')
+        own = [t for t in tasks if (t.get('acceptor') or {}).get('uid') == context.get('selfUid')]
+        if len(own) != 1:
+            raise decoded.DecodeError('需要唯一的本人已接任务；不自动接新任务')
+        task = own[0]
+    else:
+        task=selected['readyTask']
+        if (selected.get('status')!='ready' or (task.get('acceptor') or {}).get('uid')!=context['selfUid']
+                or any(selected.get('identity',{}).get(k)!=context[k] for k in ('selfUid','familyUid','season'))
+                or selected['identity'].get('packageVersion')!=data['packageVersion']):
+            raise decoded.DecodeError('已确认选取回执不属于当前本人任务')
+        current=[p for p in context.get('personalTasks') or [] if p.get('uid')==selected['readyPersonalUid']]
+        if context.get('personalTasks') is not None:
+            if len(current)!=1 or current[0]['slotUid']!=task['uid'] or current[0]['taskItemId']!=task['taskItemId']:
+                raise decoded.DecodeError('已选任务的当前个人元数据改变')
+            task={**task,**current[0], 'uid':current[0]['slotUid'],'slot':task['slot'],
+                  'acceptor':dict(uid=context['selfUid'])}
     requirement = task.get('requirement') or {}
-    if requirement.get('kind') != 'harvest' or requirement.get('productItemId') != 29 or task.get('isUpgraded') is not True:
-        raise decoded.DecodeError('首个执行版本仅支持本人已升级的苹果收获UP，其他任务保留')
-    if task.get('taskItemId') != 3875 or (task.get('bellReward') or {}).get('count') != 82:
-        raise decoded.DecodeError('该UP奖励契约尚未核对，首版仅执行当前已核对的苹果UP')
+    if not supports(task):
+        raise decoded.DecodeError('该UP产物／奖励契约未接入已核对的收获执行器，保留任务')
+    if type(task.get('target')) is not int or task['target'] <= 0:
+        raise decoded.DecodeError('UP目标数量未知')
     rows = [r for r in data['inventory']['records'] if r['itemId'] == task['taskItemId'] and int(r['extra'].get('r_id', 0)) == task['uid']]
     if len(rows) != 1 or not task.get('deadlineUnix'):
         raise decoded.DecodeError('个人任务实例或截止时间缺失')
+    if selected is not None and rows[0]['uid']!=selected['readyPersonalUid']:
+        raise decoded.DecodeError('选取后本人任务实例改变，不沿用旧绑定')
     binding = {k: context[k] for k in ('selfUid', 'familyUid', 'season')}
     binding.update(packageVersion=data['packageVersion'], slot=task['slot'], slotUid=task['uid'],
                    personalUid=rows[0]['uid'], taskItemId=task['taskItemId'], staffItemId=requirement['staffItemId'],
-                   productItemId=29, productName='苹果', target=task['target'], deadlineUnix=task['deadlineUnix'],
+                   productItemId=requirement['productItemId'], productName=product_name(task), target=task['target'], deadlineUnix=task['deadlineUnix'],
                    bellReward=task['bellReward']['count'])
     validate_task(binding, data)
     return binding
 
 
-def begin(data, root=ROOT):
+def begin(data, root=ROOT, *, selected=None):
     from tools.employee_operation import read
     root = Path(root)
     pointer = read(root / 'active.json')
@@ -118,7 +152,7 @@ def begin(data, root=ROOT):
         if record['status'] not in ('completed', 'reward_intent', 'reward_unconfirmed', 'reward_claimed'):
             validate_task(record['binding'], data)
         return record
-    binding = bind(data)
+    binding = bind(data,selected=selected)
     identity = uuid4().hex
     record = dict(id=identity, folder=str(root / identity), status='bound', binding=binding, waves=[])
     write_json(root / identity / 'task.json', record)
@@ -131,7 +165,7 @@ def save(record):
 
 
 def reconcile_partial_save(operation, slot, before, after):
-    """Adopt a proven smaller single-apple save. Never sends editor input."""
+    """Adopt a proven smaller single-product save. Never sends editor input."""
     from tools import employee_operation as employees
     binding = operation['allocation']['bound_lion']
     validate_task(binding, before, producing=True)
@@ -139,9 +173,10 @@ def reconcile_partial_save(operation, slot, before, after):
     path = employees.job_path(operation, slot)
     entry = employees.read(path)
     current, repeated = decoded.plan_items(slot, before), decoded.plan_items(slot, after)
+    product = binding['productName']
     if (not entry or entry['status'] != 'save_intent' or current != repeated
-            or set(current) != {'苹果'} or set(entry['items']) != {'苹果'}
-            or not 0 < current['苹果'] < entry['items']['苹果']
+            or set(current) != {product} or set(entry['items']) != {product}
+            or not 0 < current[product] < entry['items'][product]
             or employees.owner(slot, before) != entry['owner'] or employees.owner(slot, after) != entry['owner']
             or before['employees']['repeatEnabled'] is not False or after['employees']['repeatEnabled'] is not False
             or employees.collection_record(operation, slot) is not None):
@@ -180,6 +215,15 @@ def reward_proxy_count(data):
 
 def reward_confirmed(binding, before, after):
     decoded.validate(after)
+    return reward_changes_match(binding, before, after)
+
+
+def reward_changes_match(binding, before, after):
+    """Exact immutable reward evidence; no freshness authorization for new input."""
+    if any((before.get('familyContext') or {}).get(key) != binding[key] for key in ('selfUid', 'familyUid', 'season')):
+        return False
+    if before.get('packageVersion') != binding['packageVersion']:
+        return False
     if any((after.get('familyContext') or {}).get(key) != binding[key] for key in ('selfUid', 'familyUid', 'season')):
         return False
     if after.get('packageVersion') != binding['packageVersion']:
@@ -189,3 +233,19 @@ def reward_confirmed(binding, before, after):
     return (gone and decoded.item_count(3956, before) - decoded.item_count(3956, after) == 1
             and decoded.item_count(3638, after) - decoded.item_count(3638, before) == binding['bellReward']
             and reward_proxy_count(after) - reward_proxy_count(before) == 1)
+
+
+def completed_receipt(record):
+    if (record.get('status') != 'completed' or record.get('returned_to_farm') is not True
+            or type(record.get('completed_tasks')) is not int or record['completed_tasks'] != 1):
+        return False
+    before, after = record.get('reward_before'), record.get('reward_after')
+    if not isinstance(before, dict) or not isinstance(after, dict):
+        return False
+    for snapshot in (before, after):
+        if snapshot.get('readOnly') is not True or snapshot.get('source') != 'local_client_cache':
+            return False
+    times = [datetime.fromisoformat(d['capturedAt'].replace('Z','+00:00')) for d in (before, after)]
+    if any(t.tzinfo is None for t in times) or not times[0] <= times[1] <= datetime.now(timezone.utc):
+        return False
+    return reward_changes_match(record['binding'], before, after)

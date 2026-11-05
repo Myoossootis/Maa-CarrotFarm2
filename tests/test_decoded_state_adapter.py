@@ -44,6 +44,14 @@ def snapshot(*, production=False):
 
 
 class DecodedAdapterTests(unittest.TestCase):
+    def test_counter_only_mode_never_impersonates_a_complete_family_board(self):
+        source=snapshot();source.update(mode='lion_counter',family=dict(period=dict(completed=2)))
+        adapted=adapt_snapshot(source,COUNTS)
+        self.assertIsNone(adapted['family'])
+        self.assertEqual(adapted['lion_counter'],dict(completed=2))
+        source['family']['tasks']=[]
+        with self.assertRaisesRegex(ValueError,'counter-only'):adapt_snapshot(source,COUNTS)
+
     def test_preview_preserves_planted_ground_even_without_employee_plan(self):
         source = snapshot(production=True)
         source['production']['buildings'][0]['slots'][0].update(outputId=103, status='growing')

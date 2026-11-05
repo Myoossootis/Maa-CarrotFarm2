@@ -42,6 +42,7 @@ def main():
         'RunFeedProduction': production_actions.RunFeedProduction(),
         'RunOwnLionUP': production_actions.RunOwnLionUP(),
         'RunLionAcquisition': production_actions.RunLionAcquisition(),
+        'RunLionLoop': production_actions.RunLionLoop(),
     }
     for name, action in actions.items():
         if not AgentServer.register_custom_action(name, action):

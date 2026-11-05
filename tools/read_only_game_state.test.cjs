@@ -347,6 +347,31 @@ function fixture(){
   return {config,records};
 }
 
+test('season task count comes from own 3972 and matching shared 3921, never quota arithmetic',()=>{
+  const {familyPeriodOf}=require('./read_only_game_state.cjs');
+  const bag=[[1,3921,1,'season,126'],[2,3628,1,'plrd,1:7;r_id,8']];
+  const rows=[{uid:10000,itemId:3921,extra:'season,126;e_time,1000;status,1'},
+    {uid:10001,itemId:3972,extra:'r_id,7;r_c,2;exp,164'},
+    {uid:10002,itemId:3972,extra:'r_id,9;r_c,24;exp,2046'}];
+  const result=familyPeriodOf(rows,bag,100);
+  assert.equal(result.completed,2);assert.equal(result.points,164);assert.equal(result.season,126);
+  assert.equal(familyPeriodOf(rows.slice(1),bag,100),null);
+  assert.equal(familyPeriodOf(rows,[[1,3921,1,'season,127'],bag[1]],100),null);
+  assert.equal(familyPeriodOf([...rows,{uid:10003,itemId:3972,extra:'r_id,7;r_c,3;exp,246'}],bag,100),null);
+  assert.equal(familyPeriodOf(rows,bag,1001),null);
+  assert.equal(familyPeriodOf(rows.map(r=>r.itemId===3972&&r.uid===10001?{...r,extra:'r_id,7;r_c,bad;exp,164'}:r),bag,100),null);
+});
+
+test('harvest executor counter contract requires fixed 5740 child reward, not bell-only metadata',()=>{
+  const {config,records}=fixture();config.version='100';
+  const bell={item_id:3638,item_num_min:82,item_num_max:82,drop_type:1,drop_rate:10000,sub_box_ids:'72100'};
+  const counter={item_id:5740,item_num_min:1,item_num_max:1,drop_type:1,drop_rate:10000,sub_box_ids:null};
+  config.dropBoxes=new Map([[73194,[bell]],[72100,[counter]]]);
+  assert.deepEqual(familyFromRecords(records,[],config,100).tasks[0].completionCounter,{itemId:5740,count:1,carrierItemId:2739});
+  counter.item_num_max=2;
+  assert.equal(familyFromRecords(records,[],config,100).tasks[0].completionCounter,null);
+});
+
 test('occupied status is independent from availability of progress and deadline',()=>{
   const {config,records}=fixture(),board=familyFromRecords(records,[],config,100);
   assert.equal(board.slotCount,90);
@@ -358,10 +383,32 @@ test('occupied status is independent from availability of progress and deadline'
   assert.equal(board.tasks[1].status,'unclaimed');
 });
 
-test('incomplete and conflicting cached boards are rejected',()=>{
+test('incomplete boards are rejected and conflicting slots are quarantined',()=>{
   const {config,records}=fixture();
   assert.throws(()=>familyFromRecords(records.slice(1),[],config,100),/89\/90/);
-  assert.throws(()=>familyFromRecords([...records,{...records[0],extra:records[0].extra.replace('lock,55','lock,0')}],[],config,100),/Conflicting/);
+  const board=familyFromRecords([...records,{...records[0],extra:records[0].extra.replace('lock,55','lock,0')}],[],config,100);
+  assert.equal(board.complete,false);
+  assert.deepEqual(board.unknownSlots,[1]);
+  assert.equal(board.tasks[0].uid,null);
+  assert.equal(board.tasks[0].taskItemId,null);
+  assert.equal(board.tasks[0].status,'unknown');
+  assert.equal(board.tasks[1].status,'unclaimed');
+});
+
+test('contribution row identity remains ambiguous for any retained matching member variant',()=>{
+  const {familyPeriodOf}=require('./read_only_game_state.cjs');
+  const bag=[[1,3921,1,'season,126'],[2,3628,1,'plrd,1:7@2:48;r_id,8']];
+  const rows=[{uid:10,itemId:3921,extra:'season,126;e_time,1000;status,1'},
+    {uid:11,itemId:3972,extra:'r_id,7;r_c,2;exp,164'},
+    {uid:12,itemId:3972,extra:'r_id,9;r_c,3;exp,246'},
+    {uid:13,itemId:3629,extra:'plrd,1:7@2:48@4:甲'},
+    {uid:14,itemId:3629,extra:'plrd,1:9@2:48@4:乙'}];
+  assert.equal(familyPeriodOf(rows,bag,100).identityTripleUnique,true);
+  const tied=[...rows,{uid:15,itemId:3972,extra:'r_id,9;r_c,2;exp,164'}];
+  assert.equal(familyPeriodOf(tied,bag,100).identityTripleUnique,false);
+  assert.equal(familyPeriodOf(rows.filter(r=>r.uid!==14),bag,100).identityTripleUnique,false);
+  const wrongLevel=[bag[0],[2,3628,1,'plrd,1:7@2:49;r_id,8']];
+  assert.equal(familyPeriodOf(rows,wrongLevel,100).identityTripleUnique,false);
 });
 
 test('rare includes upgraded tasks; bell rewards come from the task reward box',()=>{

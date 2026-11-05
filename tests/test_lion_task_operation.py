@@ -64,6 +64,16 @@ class LionTaskOperationTests(unittest.TestCase):
             with self.subTest(change=change), self.assertRaises(decoded.DecodeError):
                 lion.validate_task(binding, changed)
 
+    def test_confirmed_selection_binds_current_personal_instance_without_other_board_slots(self):
+        source=data();task=deepcopy(source['family']['tasks'][-1])
+        selected=dict(status='ready',readyTask=task,readyPersonalUid=100,
+            identity=dict(selfUid=7,familyUid=8,season=126,packageVersion='100'))
+        source['family']={'period':None}
+        source['familyContext']['personalTasks']=[dict(task,uid=100,slotUid=1001,status=1)]
+        self.assertEqual(lion.bind(source,selected=selected)['personalUid'],100)
+        source['familyContext']['personalTasks'][0]['slotUid']=1002
+        with self.assertRaises(decoded.DecodeError):lion.bind(source,selected=selected)
+
     def test_finished_task_prevents_new_production_even_with_excess_progress(self):
         binding = lion.bind(data())
         self.assertEqual(lion.validate_task(binding, data(208, 2))['status'], 2)
