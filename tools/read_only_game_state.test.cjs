@@ -68,25 +68,45 @@ test('order capacity uses linked tokens, sums records and keeps zero separate fr
   assert.deepEqual(orderCapacityOf({records:[]},config).entries,[]);
 });
 
-test('package 99 reuses the capacity contract; unverified packages do not pretend zero',()=>{
+test('packages 99 and 100 reuse the capacity contract; unverified packages do not pretend zero',()=>{
   const {VERIFIED_CAPACITY_PACKAGES}=require('./read_only_game_state.cjs');
-  assert.deepEqual([...VERIFIED_CAPACITY_PACKAGES].sort(),['90','99']);
-  const config=capacityConfig();
-  config.version='99';
-  const filled=orderCapacityOf({records:[{itemId:103,count:2},{itemId:104,count:6}]},config);
-  assert.equal(filled.complete,true);
-  assert.equal(filled.semanticsPackageVersion,'99');
-  assert.equal(filled.reason,undefined);
-  assert.deepEqual(filled.entries,[
-    {category:'party',tokenItemId:103,remaining:2,limit:6},
-    {category:'takeout',tokenItemId:104,remaining:6,limit:6},
-  ]);
-  const none=orderCapacityOf({records:[]},config);
-  assert.equal(none.complete,true);
-  assert.deepEqual(none.entries.map(row=>row.remaining),[0,0]);
-  const expired=inventoryOf([[1,103,6,'',99],[2,104,1,'',101]],config,100);
-  assert.deepEqual(orderCapacityOf(expired,config).entries.map(row=>row.remaining),[0,1]);
-  for(const version of ['98','100']){
+  assert.deepEqual([...VERIFIED_CAPACITY_PACKAGES].sort(),['100','90','99']);
+  for(const version of ['99','100']){
+    const config=capacityConfig();
+    config.version=version;
+    const filled=orderCapacityOf({records:[{itemId:103,count:2},{itemId:104,count:6}]},config);
+    assert.equal(filled.complete,true);
+    assert.equal(filled.semanticsPackageVersion,version);
+    assert.equal(filled.reason,undefined);
+    assert.deepEqual(filled.entries,[
+      {category:'party',tokenItemId:103,remaining:2,limit:6},
+      {category:'takeout',tokenItemId:104,remaining:6,limit:6},
+    ]);
+    const none=orderCapacityOf({records:[]},config);
+    assert.equal(none.complete,true);
+    assert.deepEqual(none.entries.map(row=>row.remaining),[0,0]);
+    const expired=inventoryOf([[1,103,6,'',99],[2,104,1,'',101]],config,100);
+    assert.deepEqual(orderCapacityOf(expired,config).entries.map(row=>row.remaining),[0,1]);
+    const drifted=capacityConfig();
+    drifted.version=version;
+    drifted.items.get(101).params='ref_id,105';
+    drifted.items.set(105,{item_type:24,params:'output_id,501'});
+    drifted.outputs.get(501).item_id=105;
+    assert.throws(()=>orderCapacityOf({records:[{itemId:105,count:6}]},drifted),/token identity/);
+    const badType=capacityConfig();
+    badType.version=version;
+    badType.items.get(103).item_type=1;
+    assert.throws(()=>orderCapacityOf({records:[]},badType),/token type/);
+    const badOutput=capacityConfig();
+    badOutput.version=version;
+    badOutput.outputs.get(501).type=1;
+    assert.throws(()=>orderCapacityOf({records:[]},badOutput),/output/);
+    const badLimit=capacityConfig();
+    badLimit.version=version;
+    badLimit.outputs.get(501).limit=7;
+    assert.throws(()=>orderCapacityOf({records:[{itemId:103,count:4}]},badLimit),/limit/);
+  }
+  for(const version of ['98','101']){
     const other=capacityConfig();
     other.version=version;
     const result=orderCapacityOf({records:[{itemId:103,count:6},{itemId:104,count:6}]},other);
@@ -95,20 +115,6 @@ test('package 99 reuses the capacity contract; unverified packages do not preten
     assert.equal(result.semanticsPackageVersion,version);
     assert.deepEqual(result.entries,[]);
   }
-  const drifted=capacityConfig();
-  drifted.version='99';
-  drifted.items.get(101).params='ref_id,105';
-  drifted.items.set(105,{item_type:24,params:'output_id,501'});
-  drifted.outputs.get(501).item_id=105;
-  assert.throws(()=>orderCapacityOf({records:[{itemId:105,count:6}]},drifted),/token identity/);
-  const badOutput=capacityConfig();
-  badOutput.version='99';
-  badOutput.outputs.get(501).type=1;
-  assert.throws(()=>orderCapacityOf({records:[]},badOutput),/output/);
-  const badLimit=capacityConfig();
-  badLimit.version='99';
-  badLimit.outputs.get(501).limit=7;
-  assert.throws(()=>orderCapacityOf({records:[{itemId:103,count:4}]},badLimit),/limit/);
 });
 
 test('expired order tokens do not grant capacity and corrupt mappings or counts fail closed',()=>{
