@@ -7,7 +7,8 @@
 // CROP_IDX, OUTPUT_TYPE and SRATE, so the same timing rules apply. Party/takeout
 // order capacity is a separate contract in the order decoder (packages 90, 99, and 100).
 // This module consumes decoded records only; it has no process, UI or network API.
-const VERIFIED_PACKAGES=new Set(['87','90','98','99']);
+// 100 ViewFarmModel and EnumTypes are byte-identical to 98 (2026-11-05).
+const VERIFIED_PACKAGES=new Set(['87','90','98','99','100']);
 const BUILDINGS=new Map([[12,'field'],[284,'field'],[285,'field'],[17,'ranch'],[723,'ranch'],[28,'orchard'],[286,'orchard']]);
 const LABELS={empty:'空位',growing:'生长中',mature:'已成熟',needs_feed:'待喂食',unknown:'未判定'};
 const paramsOf=value=>Object.fromEntries(String(value||'').split(';').filter(Boolean).map(v=>{const i=v.indexOf(',');return [v.slice(0,i),v.slice(i+1)];}));
@@ -39,7 +40,7 @@ function decodeSlot(raw,chargeCds,config,now,index){
   slot.isMutation=Number(itemParams.mutation_ref_id)>0;
   slot.baseDurationSeconds=output.cd;
   slot.effectiveDurationSeconds=output.cd-Math.floor(output.cd*(slot.cdRatePercent/100));
-  if(!VERIFIED_PACKAGES.has(String(config.version))) return unknown('客户端版本未核对；当前已核对87、90、98、99版规则');
+  if(!VERIFIED_PACKAGES.has(String(config.version))) return unknown('客户端版本未核对；当前已核对87、90、98、99、100版规则');
   if(slot.cdRatePercent>100) return unknown('减时百分比超出已核对范围');
   if(chargeCds!==null&&(!Array.isArray(chargeCds)||!chargeCds.length||!valid(chargeCds)))
     return unknown('无效的供料计时数组');
@@ -128,10 +129,16 @@ function productionOf(inventory,config,now,common={}){
         if(v.length<2||!valid(v)||key>=carrier.count||charge.has(key)){mapError=true;continue;}
         charge.set(key,v.slice(1));
       }
-      if(rawList.length!==carrier.count) issues.push({carrierUid:carrier.uid,reason:'槽位条数与载体数量不同',expected:carrier.count,actual:rawList.length});
+      // Package100 getFieldCropDatasList pads newly expanded trailing slots to
+      // [0,0,0,0]. Preserve the absent raw tuple and expose its derivation.
+      const padNewSlots=String(config.version)==='100'&&rawList.length<carrier.count;
+      if(rawList.length!==carrier.count&&!padNewSlots) issues.push({carrierUid:carrier.uid,reason:'槽位条数与载体数量不同',expected:carrier.count,actual:rawList.length});
       if(mapError) issues.push({carrierUid:carrier.uid,reason:'供料索引或格式有误；该载体计时未推断'});
       const slots=Array.from({length:carrier.count},(_,index)=>{
-        const value=decodeSlot(rawList[index]??null,charge.get(index)??null,config,now,index);
+        const padded=padNewSlots&&index>=rawList.length;
+        const value=decodeSlot(padded?'0_0_0_0':rawList[index]??null,charge.get(index)??null,config,now,index);
+        if(padded){value.raw.datasList=null;value.raw.tuple=null;value.raw.clientInitializedTuple=[0,0,0,0];
+          value.timingReason='已核对getFieldCropDatasList：扩建后未落盘的尾部槽位初始化为空';}
         const rolls=chanceRolls.slice(index*4,index*4+4);
         value.chanceRolls=rolls.length===4&&valid(rolls)?
           {collectDouble:rolls[0],mutation:rolls[1],mutationCollectDouble:rolls[2],playerMutation:rolls[3]}:null;
@@ -143,7 +150,8 @@ function productionOf(inventory,config,now,common={}){
       });
       buildings.push({buildingUid:parent.uid,buildingItemId:parent.itemId,buildingName:parent.name,
         kind:BUILDINGS.get(parent.itemId),carrierUid:carrier.uid,carrierItemId:carrier.itemId,
-        slotCount:carrier.count,slots,raw:{...carrier.extra}});
+        slotCount:carrier.count,slots,complete:VERIFIED_PACKAGES.has(String(config.version))&&!mapError&&
+          (rawList.length===carrier.count||padNewSlots)&&slots.every(s=>s.status!=='unknown'),raw:{...carrier.extra}});
     }
   }
   const all=buildings.flatMap(b=>b.slots),states=Object.fromEntries(Object.keys(LABELS).map(k=>[k,all.filter(s=>s.status===k).length]));

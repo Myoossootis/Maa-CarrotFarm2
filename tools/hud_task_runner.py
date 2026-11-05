@@ -17,6 +17,7 @@ from tools.task_control import TaskCancelled, _check_stop
 from tools.ui_worker import workflow_lock
 
 SUPPORTED = {
+    'RunOwnLionUP': 'RunOwnLionUP',
     'RunDailyBatchOrders': 'RunDailyOrders', 'RunDailyPartyOrders': 'RunDailyOrders',
     'RunDailyTakeoutOrders': 'RunDailyOrders', 'RunDailyNormalOrders': 'RunDailyOrders',
     'RunNormalOrderLoop': 'RunDailyOrders', 'RefreshOrder': 'RefreshOrder',

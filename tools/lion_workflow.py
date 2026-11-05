@@ -27,7 +27,7 @@ def review(snapshot, *, now=None):
             raise ValueError('员工拥有列表未读取')
         result.update(selfUid=context['selfUid'], familyUid=context['familyUid'], season=context['season'])
         result['blockers'].append('本期已完成次数及3956扣减语义未核对，不能启动26次自动循环')
-        result['blockers'].append('狮王接取／升级／上阵／提交领奖执行器尚未实现')
+        result['blockers'].append('本页仅检查；实际入口仅执行一个本人已升级苹果收获UP，不接取／升级／换人')
         for task in tasks:
             acceptor, upgrader = task.get('acceptor'), task.get('upgrader')
             if acceptor is not None and (not isinstance(acceptor, dict) or type(acceptor.get('uid')) is not int or acceptor['uid'] <= 0):
@@ -63,7 +63,7 @@ def review(snapshot, *, now=None):
                 elif not row['staffOnDuty']:
                     row['blockers'].append('指定UP员工未在所需区域上阵；不能静默换人')
                 if kind == 'harvest':
-                    row['blockers'].append('手动一键种植／收获和当前客户端生产规则需专项验收')
+                    row['blockers'].append('实际入口按当前员工容量分批；其他作物和手动一键仍未启用')
             (result['ownTasks'] if own else result['candidates']).append(row)
         result['candidates'].sort(key=lambda r: (bool(r['blockers']), r['slot']))
         if result['ownTasks']:

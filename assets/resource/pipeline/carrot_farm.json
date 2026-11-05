@@ -1,4 +1,5 @@
 {
+    "RunOwnLionUP": {"action": "Custom", "custom_action": "RunOwnLionUP", "timeout": 86400000},
     "UiProgressLog": {
         "recognition": "DirectHit",
         "action": "DoNothing",

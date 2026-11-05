@@ -55,6 +55,9 @@ CROP_MONITOR_TIMEOUT_HINTS = {
 
 def format_order_need(allocation):
     """One line: which order, each item's need / stock / gap."""
+    if (allocation or {}).get('bound_lion'):
+        task = allocation['bound_lion']
+        return f"[狮王] 本人槽位{task['slot']}，收获苹果目标{task['target']}，分批生产后回读任务进度"
     items = (allocation or {}).get('target_items') or []
     order = (allocation or {}).get('target_order')
     if not items:

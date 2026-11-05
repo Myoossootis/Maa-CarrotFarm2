@@ -18,10 +18,12 @@ def collection_candidate(slot_id, data):
     entry = decoded.plan(slot_id, data)
     production = data.get('production') or {}
     areas = [row for row in production.get('buildings', []) if row['buildingItemId'] == entry['buildingItemId']]
-    if (production.get('complete') is not True or not production.get('semanticsPackageVersion') or
+    if (not production.get('semanticsPackageVersion') or
             production['semanticsPackageVersion'] != data.get('packageVersion') or
             len(areas) != 1 or not entry.get('buildingUid') or areas[0].get('buildingUid') != entry['buildingUid']):
         raise decoded.DecodeError('Production version or ownership unconfirmed: ' + slot_id)
+    if production.get('complete') is not True and areas[0].get('complete') is not True:
+        raise decoded.DecodeError('Target production area is incomplete: ' + slot_id)
     if data['employees'].get('repeatEnabled') is not False:
         raise decoded.DecodeError('Repeat production must be confirmed off')
     targets = entry['targets']

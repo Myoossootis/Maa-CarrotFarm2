@@ -56,10 +56,13 @@ test('verified package 90 decodes fields, orchards and feed-limited ranches',()=
   assert.equal(data99.complete,true);
   assert.equal(data99.semanticsPackageVersion,'99');
   assert.equal(data99.states.unknown,0);
-  const bogus=productionOf(inventory(),{...config,version:'100'},1100);
+  const current100=productionOf(inventory(),{...config,version:'100'},1100);
+  assert.equal(current100.complete,true);
+  assert.equal(current100.buildings[0].complete,true);
+  const bogus=productionOf(inventory(),{...config,version:'101'},1100);
   assert.equal(bogus.complete,false);
   assert.equal(bogus.semanticsPackageVersion,null);
-  assert.equal(decodeSlot('103_1000_1_2',null,{...config,version:'100'},1100,0).status,'unknown');
+  assert.equal(decodeSlot('103_1000_1_2',null,{...config,version:'101'},1100,0).status,'unknown');
 });
 
 test('charged animal credits earlier segments and does not mistake feed durations for item counts',()=>{
@@ -115,6 +118,20 @@ test('missing slots are emitted as unknown rather than silently omitted or calle
   const data=productionOf(inventory('103_1000_0_40'),config,1100);
   assert.equal(data.slotCount,2);assert.equal(data.complete,false);
   assert.equal(data.buildings[0].slots[1].status,'unknown');
+});
+
+test('100 initializes expanded trailing slots by the checked client rule, retains raw absence and rejects corrupt existing tuples',()=>{
+  const current={...config,version:'100'};
+  for(const count of [2,3,17]){
+    const data=inventory('0_0_0_4');data.records[1].count=count;
+    const area=productionOf(data,current,1100).buildings[0];
+    assert.equal(area.slots.length,count);
+    assert.equal(area.complete,true);
+    assert.equal(area.slots.at(-1).status,'empty');
+    assert.equal(area.slots.at(-1).raw.datasList,null);
+    assert.deepEqual(area.slots.at(-1).raw.clientInitializedTuple,[0,0,0,0]);
+  }
+  assert.equal(productionOf(inventory('broken'),current,1100).complete,false);
 });
 
 test('chance list has four independent draws per slot and missing repeat count stays null',()=>{

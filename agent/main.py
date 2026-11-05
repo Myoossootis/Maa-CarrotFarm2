@@ -40,6 +40,7 @@ def main():
         'RunDailyOrders': production_actions.RunDailyOrders(),
         'RefreshOrder': production_actions.RefreshOrder(),
         'RunFeedProduction': production_actions.RunFeedProduction(),
+        'RunOwnLionUP': production_actions.RunOwnLionUP(),
     }
     for name, action in actions.items():
         if not AgentServer.register_custom_action(name, action):

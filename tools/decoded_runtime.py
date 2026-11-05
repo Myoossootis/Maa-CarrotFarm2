@@ -26,9 +26,9 @@ _selection = ContextVar('decoded_order_selection', default=None)
 
 # Ordinary-order package-string gate. Packages 90, 98 and 99 have checked
 # normal-order semantics (99 reuses the 98 ViewFarm timing: byte-identical
-# getOutputProgress, CROP_IDX, OUTPUT_TYPE, SRATE). Package 100 is listed so
-# automation reads do not fail closed on the package string alone; its
-# production timing is not verified and is not claimed here.
+# getOutputProgress, CROP_IDX, OUTPUT_TYPE, SRATE). Package100 ViewFarmModel
+# and EnumTypes are byte-identical to98, checked locally 2026-11-05; its
+# production timing is enabled separately in read_only_production.cjs.
 # Party/takeout capacity uses the same cfg contract on 90, 99 and 100
 # (100 checked live 2026-11-05). remaining is the client-effective count
 # already computed in Node: non-expired bag rows plus CD/day_limit ticks when
@@ -304,7 +304,7 @@ def assignment_blocker(slot_id, data=None):
     if any(x['count'] > 0 for x in entry.get('accumulated', [])):
         return 'employee_products_pending'
     production = data.get('production') or {}
-    if (production.get('complete') is not True or not production.get('semanticsPackageVersion') or
+    if (not production.get('semanticsPackageVersion') or
             production['semanticsPackageVersion'] != data.get('packageVersion')):
         return 'production_state_incomplete'
     areas = [area for area in production.get('buildings', [])
@@ -313,6 +313,8 @@ def assignment_blocker(slot_id, data=None):
     if type(owner) is not int or owner <= 0 or len(areas) != 1 or areas[0].get('buildingUid') != owner:
         return 'production_owner_unconfirmed'
     area = areas[0]
+    if production.get('complete') is not True and area.get('complete') is not True:
+        return 'production_state_incomplete'
     slots = area.get('slots', [])
     numbers = [slot.get('slot') for slot in slots]
     if (not slots or len(slots) != area.get('slotCount') or
