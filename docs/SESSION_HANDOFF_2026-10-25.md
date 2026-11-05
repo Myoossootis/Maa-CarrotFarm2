@@ -10,7 +10,7 @@
 
 首要阻塞是后台输入：贡献滚动推进不足、任务页签和关闭不能稳定确认。已修复“头像等级误作任务编号”的页面证明，返回箭头增加前景遮罩／尺度搜索；实际导航仍未通过。临时输入策略均留在`.tmp/`，没有接入正式模块；`maa_frame_normalize.py`保持原实现。同步消息测试曾抢前台，不得恢复该路径。Maa AnchoredTouch只审阅源码，尚未测试。Cocos／Frida／WMPF内部调用继续封存。
 
-本轮分支`codex/lion-task-loop`，基于0.16分支`codex/lion-task-acquisition`的`d3f8d14`。离线两任务连续推进、领奖后断点恢复与预算跨轮累计已回归；最终检查／提交状态见本节后续记录。现有未跟踪`tools/_pkg100_probe_rogs.cjs`未调用、未修改、不提交。原始日志与截图在本地`.tmp/lion_loop_2026-11-05/`，不得上传。
+本轮分支`codex/lion-task-loop`，基于0.16分支`codex/lion-task-acquisition`的`d3f8d14`。功能提交`6b6c85e`已推送，[草稿PR #25](https://github.com/Myoossootis/Maa-CarrotFarm2/pull/25)的base仍是选取分支，未合入main、未打标签；创建时远端resource／offline-tests仍在运行，不能写成CI已通过。离线两任务连续推进、领奖后断点恢复与预算跨轮累计已回归。现有未跟踪`tools/_pkg100_probe_rogs.cjs`未调用、未修改、不提交。原始日志与截图在本地`.tmp/lion_loop_2026-11-05/`，不得上传。
 
 最终离线：Python754项（751通过、3项可选历史截图跳过），Node40项通过，资源／Schema／版本检查通过。此结果不包含真实自然生产或跨任务领奖验收。提交为0.17.0开发草稿，界面已标注后台导航未验收，不打正式发布标签。
 
