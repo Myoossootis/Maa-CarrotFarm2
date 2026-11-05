@@ -191,6 +191,15 @@ def apply_jobs(allocation: dict, checkpoint=None, operation=None, *, allow_parti
         for job in allocation["jobs"]:
             print(f"[排产] {job['slot_id']} items={job['items']}", flush=True)
             previous = operations.read(operations.job_path(operation, job['slot_id'])) if operation else None
+            if previous and previous.get('status') == 'editing':
+                # close_employee_menu above positively closed the old draft.
+                # A save intent would take the separate reconciliation path.
+                current = decoded.snapshot()
+                operations.validate_target(allocation, current)
+                operations.retire_unsaved_edit(operation, job['slot_id'], current, ui_closed=True)
+                previous = None
+            elif previous and previous.get('status') == 'aborted_before_save':
+                previous = None
             if previous:
                 result = operations.reconcile_save(operation, job['slot_id'], decoded.snapshot())
                 saved.append({**result, 'verified': True})

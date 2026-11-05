@@ -182,23 +182,188 @@ function inventoryOf(bag,config,now){
   return {recordCount:records.length,products:[...totals].map(([itemId,count])=>({itemId,name:config.name(itemId),count})),records};
 }
 
-function orderCapacityOf(inventory,config){
-  // Verified against the v90 count display and accept guards. This is the
-  // current token balance, separate from our historical completion ledger.
-  const result={complete:false,semanticsPackageVersion:String(config.version),entries:[]};
-  if(String(config.version)!=='90') return {...result,reason:'unverified_package_version'};
-  for(const [category,orderId] of [['party',101],['takeout',102]]){
-    const tokenId=Number(extraOf(config.items.get(orderId)?.params).ref_id);
-    const token=config.items.get(tokenId),output=config.outputs?.get(Number(extraOf(token?.params).output_id));
-    if(!Number.isSafeInteger(tokenId)||token?.item_type!==24||output?.item_id!==tokenId||output.type!==2||
-       !Number.isSafeInteger(output.limit)||output.limit<1||output.limit>6)
-      throw Error('Invalid order capacity configuration: '+category);
+// Party/takeout count semantics checked on every read for these packages only.
+// 90: client refreshOrderCount / showPanelNeedFood / acceptOrder, 2026-10-25.
+// 99 and 100: same cfg contract as 90 (order 101/102 → ref_id token, item_type 24,
+// output type 2, limit 1–6). Effective remaining follows BagCore.getItemNum:
+// non-expired item_num plus getCdItemNumVo().iCdNum for a CD day_limit token.
+// Ticks require a persisted refresh time. No row and no recover fields stay 0;
+// do not synthesize output.limit. 2026-11-05 Asia/Singapore: the party panel
+// showed 6/6 while MMKV had no 103/104 rows (rawTok=[]) and common['104'] was
+// only boolean true. That is not a refresh clock, so this function still
+// returns 0. The board probe may trust a readable UI counter for that empty
+// entry; do not invent ticks here. No client package is in this repo, so
+// there is no SceneGuestOrderLogic byte check.
+// Other packages stay incomplete; do not infer 0.
+const VERIFIED_CAPACITY_PACKAGES=new Set(['90','99','100']);
+const CAPACITY_ORDERS=[['party',101],['takeout',102]];
+// Verified token identity from the v90 static check. ref_id is still read from
+// config; a different id fails closed instead of being treated as that balance.
+const CAPACITY_TOKENS={party:103,takeout:104};
+// setItemNum writes REFRESH_TIME and REPEAT_COUNT onto the item extra. This
+// client persists refresh timestamps as r_time elsewhere; accept that alias
+// and the constant names. A missing or non-positive refresh is not a clock.
+const CAPACITY_REFRESH_KEYS=['refresh_time','REFRESH_TIME','r_time'];
+const CAPACITY_REPEAT_KEYS=['repeat_count','REPEAT_COUNT','rp_c'];
+const SHANGHAI_OFFSET=8*3600;
+
+function hasOwn(obj,key){return !!obj&&Object.prototype.hasOwnProperty.call(obj,key);}
+
+function asSafeInt(value){
+  if(typeof value==='number') return Number.isSafeInteger(value)?value:NaN;
+  if(typeof value==='string'&&/^-?\d+$/.test(value)){const n=Number(value);return Number.isSafeInteger(n)?n:NaN;}
+  return NaN;
+}
+
+function recordExtra(extra){
+  if(extra==null||extra==='') return {};
+  if(typeof extra==='string') return extraOf(extra);
+  if(typeof extra==='object'&&!Array.isArray(extra)) return extra;
+  throw Error('Invalid order capacity recover field');
+}
+
+function keyedInteger(extra,keys){
+  if(!extra||typeof extra!=='object') return undefined;
+  let seen=false,value;
+  for(const key of keys){
+    if(!hasOwn(extra,key)) continue;
+    const raw=extra[key];
+    if(raw===''||raw==null) continue;
+    const parsed=asSafeInt(raw);
+    if(!Number.isSafeInteger(parsed)) throw Error('Invalid order capacity recover field');
+    if(seen&&value!==parsed) throw Error('Invalid order capacity recover field');
+    seen=true;value=parsed;
+  }
+  return seen?value:undefined;
+}
+
+function positiveRefresh(extra){
+  const refresh=keyedInteger(extra,CAPACITY_REFRESH_KEYS);
+  return refresh!==undefined&&refresh>0;
+}
+
+// null: this output has no CD contract, so remaining is the raw bag sum.
+// Both cd and day_limit must be valid once either one is present.
+function cdSpec(output){
+  const params=extraOf(output?.params);
+  const cdPresent=hasOwn(output,'cd')&&output.cd!==''&&output.cd!=null;
+  const dayPresent=hasOwn(params,'day_limit')&&params.day_limit!=='';
+  if(!cdPresent&&!dayPresent) return null;
+  const cd=asSafeInt(output.cd),day=asSafeInt(params.day_limit);
+  if(!cdPresent||!Number.isSafeInteger(cd)||cd<1) throw Error('Invalid order capacity configuration: cd');
+  if(!dayPresent||!Number.isSafeInteger(day)||day<1) throw Error('Invalid order capacity configuration: day_limit');
+  return {cd,dayLimit:day,limit:output.limit};
+}
+
+function shanghaiDay(unix){return Math.floor((unix+SHANGHAI_OFFSET)/86400);}
+
+// Unreified ticks since REFRESH_TIME, capped by the stack room and today's
+// day_limit. REPEAT_COUNT counts realized recoveries on the refresh time's
+// Shanghai day; a previous day does not consume today's cap. Host UTC is the
+// clock — the server-synced clock is not in this snapshot.
+function cdRecoveredCount(count,extra,spec,now){
+  const refresh=keyedInteger(extra,CAPACITY_REFRESH_KEYS);
+  if(refresh===undefined||refresh<=0) return 0;
+  const repeat=keyedInteger(extra,CAPACITY_REPEAT_KEYS)??0;
+  if(repeat<0) throw Error('Invalid order capacity recover field');
+  if(!Number.isSafeInteger(now)||now<0) throw Error('Invalid order capacity clock');
+  if(now<refresh) return 0;
+  const ticks=Math.floor((now-refresh)/spec.cd);
+  const used=shanghaiDay(now)===shanghaiDay(refresh)?repeat:0;
+  if(used>spec.dayLimit) throw Error('Invalid order capacity recover field');
+  const room=spec.limit-count;
+  const recovered=Math.min(ticks,room>0?room:0,spec.dayLimit-used);
+  if(!Number.isSafeInteger(recovered)||recovered<0) throw Error('Invalid order capacity total');
+  return recovered;
+}
+
+function asExtra(value){
+  if(typeof value==='string') return extraOf(value);
+  if(value&&typeof value==='object'&&!Array.isArray(value)) return value;
+  return null;
+}
+
+function namesToken(extra,tokenId){
+  const raw=extra.item_id??extra.itemId??extra.id;
+  if(raw==null||raw==='') return false;
+  const id=asSafeInt(raw);
+  return id===tokenId;
+}
+
+// One virtual stack when the bag row itself has no clock. Direct common[tokenId]
+// counts; any other value must name the token. Disagreeing clocks fail closed.
+function commonRecoverExtra(common,tokenId){
+  if(!common||typeof common!=='object'||Array.isArray(common)) return null;
+  const candidates=[];
+  const consider=(extra,force)=>{
+    if(!extra||!(force||namesToken(extra,tokenId))||!positiveRefresh(extra)) return;
+    candidates.push(extra);
+  };
+  consider(asExtra(common[tokenId]??common[String(tokenId)]),true);
+  for(const [key,value] of Object.entries(common)){
+    if(key===String(tokenId)) continue;
+    consider(asExtra(value),false);
+  }
+  if(!candidates.length) return null;
+  const refresh=keyedInteger(candidates[0],CAPACITY_REFRESH_KEYS);
+  const repeat=keyedInteger(candidates[0],CAPACITY_REPEAT_KEYS)??0;
+  for(const extra of candidates.slice(1)){
+    if(keyedInteger(extra,CAPACITY_REFRESH_KEYS)!==refresh||(keyedInteger(extra,CAPACITY_REPEAT_KEYS)??0)!==repeat)
+      throw Error('Invalid order capacity recover field');
+  }
+  return candidates[0];
+}
+
+function orderCapacityOf(inventory,config,now=Math.floor(Date.now()/1000),common){
+  // Client-effective token balance: non-expired item_num plus unreified CD
+  // ticks, capped at output.limit. Separate from the historical completion
+  // ledger. A verified package still fails closed when the live config no
+  // longer matches the contract.
+  const version=String(config.version);
+  const result={complete:false,semanticsPackageVersion:version,entries:[]};
+  if(!VERIFIED_CAPACITY_PACKAGES.has(version)) return {...result,reason:'unverified_package_version'};
+  for(const [category,orderId] of CAPACITY_ORDERS){
+    const orderItem=config.items.get(orderId);
+    const tokenId=Number(extraOf(orderItem?.params).ref_id);
+    const token=Number.isSafeInteger(tokenId)?config.items.get(tokenId):undefined;
+    const outputId=Number(extraOf(token?.params).output_id);
+    const output=config.outputs?.get(outputId);
+    if(!orderItem) throw Error('Invalid order capacity configuration: '+category+' order item');
+    if(!Number.isSafeInteger(tokenId)||!token) throw Error('Invalid order capacity configuration: '+category+' token ref');
+    if(tokenId!==CAPACITY_TOKENS[category]) throw Error('Invalid order capacity configuration: '+category+' token identity');
+    if(token.item_type!==24) throw Error('Invalid order capacity configuration: '+category+' token type');
+    if(!output||output.item_id!==tokenId||output.type!==2) throw Error('Invalid order capacity configuration: '+category+' output');
+    if(!Number.isSafeInteger(output.limit)||output.limit<1||output.limit>6)
+      throw Error('Invalid order capacity configuration: '+category+' limit');
+    const spec=cdSpec(output);
+    const rows=inventory.records.filter(x=>x.itemId===tokenId);
     let remaining=0;
-    for(const record of inventory.records.filter(x=>x.itemId===tokenId)){
-      if(!Number.isSafeInteger(record.count)||record.count<0) throw Error('Invalid order capacity count');
-      remaining+=record.count;
+    if(!spec){
+      for(const record of rows){
+        if(!Number.isSafeInteger(record.count)||record.count<0) throw Error('Invalid order capacity count');
+        remaining+=record.count;
+      }
+    }else if(!rows.length){
+      const shared=commonRecoverExtra(common,tokenId);
+      if(shared) remaining=cdRecoveredCount(0,shared,spec,now);
+    }else{
+      const parsed=rows.map(record=>{
+        if(!Number.isSafeInteger(record.count)||record.count<0) throw Error('Invalid order capacity count');
+        return {count:record.count,extra:recordExtra(record.extra)};
+      });
+      if(parsed.some(row=>positiveRefresh(row.extra))){
+        for(const row of parsed){
+          const recovered=positiveRefresh(row.extra)?cdRecoveredCount(row.count,row.extra,spec,now):0;
+          remaining+=row.count+recovered;
+        }
+      }else{
+        const count=parsed.reduce((sum,row)=>sum+row.count,0);
+        const shared=commonRecoverExtra(common,tokenId);
+        remaining=count+(shared?cdRecoveredCount(count,shared,spec,now):0);
+      }
     }
     if(!Number.isSafeInteger(remaining)) throw Error('Invalid order capacity total');
+    if(remaining>output.limit) remaining=output.limit;
     result.entries.push({category,tokenItemId:tokenId,remaining,limit:output.limit});
   }
   result.complete=true;
@@ -332,7 +497,7 @@ function buildReport(options,ctx){
   if(['inventory','automation','all'].includes(options.mode)) data.inventory=inventory;
   if(['orders','automation','all'].includes(options.mode)){
     data.orders=stage('ordersMs',()=>ordersOf(state.bag,config,inventory));
-    data.orderCapacity=stage('orderCapacityMs',()=>orderCapacityOf(inventory,config));
+    data.orderCapacity=stage('orderCapacityMs',()=>orderCapacityOf(inventory,config,now,state.common));
   }
   if(['employees','automation','all'].includes(options.mode)) data.employees=stage('employeesMs',()=>employeesOf(state.bag,state.common,config));
   if(['production','automation','all'].includes(options.mode)) data.production=stage('productionMs',()=>productionOf(inventory,config,now,state.common));
@@ -446,5 +611,5 @@ function main(){
   process.stderr.write(JSON.stringify({mode:options.mode,timings,output:options.output||'stdout'})+'\n');
 }
 
-module.exports={readv,crc32,parseMMKV,unwrapValue,extraOf,progressOf,familyFromRecords,inventoryOf,ordersOf,employeesOf,orderCapacityOf,createReader};
+module.exports={readv,crc32,parseMMKV,unwrapValue,extraOf,progressOf,familyFromRecords,inventoryOf,ordersOf,employeesOf,orderCapacityOf,VERIFIED_CAPACITY_PACKAGES,createReader};
 if(require.main===module){try{main();}catch(error){process.stderr.write(JSON.stringify({error:error.message,readOnly:true})+'\n');process.exitCode=1;}}

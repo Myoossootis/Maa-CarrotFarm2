@@ -5,11 +5,20 @@ import atexit
 import ctypes
 from pathlib import Path
 import time
+from contextlib import contextmanager
+import threading
+import sys
+
+sys.modules.setdefault('task_control', sys.modules[__name__])
+sys.modules.setdefault('tools.task_control', sys.modules[__name__])
 
 
 CANCEL_ENV = "CARROT_UI_CANCEL_FILE"
+RUN_CANCEL_ENV = 'CARROT_UI_RUN_CANCEL_FILE'
 _sleep = time.sleep
 _parent_handle = None
+PAUSE_ENV = 'CARROT_UI_PAUSE_FILE'
+_input_state = threading.local()
 
 
 class TaskCancelled(BaseException):
@@ -17,11 +26,41 @@ class TaskCancelled(BaseException):
 
 
 def check_cancelled():
-    filename = os.environ.get(CANCEL_ENV)
-    if filename and Path(filename).exists():
-        raise TaskCancelled("Maa UI requested stop")
+    _check_stop()
+    filename = os.environ.get(PAUSE_ENV)
+    if not filename or getattr(_input_state, 'depth', 0):
+        return
+    pause = Path(filename)
+    acknowledgment = pause.parent / 'workers' / f'{os.getpid()}.paused'
+    try:
+        while pause.exists():
+            _check_stop()
+            acknowledgment.parent.mkdir(parents=True, exist_ok=True)
+            acknowledgment.touch(exist_ok=True)
+            _sleep(.05)
+    finally:
+        acknowledgment.unlink(missing_ok=True)
+
+
+def _check_stop():
+    for name in (RUN_CANCEL_ENV, CANCEL_ENV):
+        filename = os.environ.get(name)
+        if filename and Path(filename).exists():
+            raise TaskCancelled("Maa UI requested stop")
     if os.environ.get('CARROT_UI_PARENT_PID') and _parent_has_exited():
         raise TaskCancelled('Maa UI Agent exited')
+
+
+@contextmanager
+def atomic_input():
+    """Finish releasing a mouse press before acknowledging a pause."""
+    check_cancelled()
+    _input_state.depth = getattr(_input_state, 'depth', 0) + 1
+    try:
+        yield
+    finally:
+        _input_state.depth -= 1
+    check_cancelled()
 
 
 def _parent_has_exited():
@@ -54,3 +93,13 @@ def interruptible_sleep(seconds):
 def install_interruptible_waits():
     # Only called inside the dedicated worker, not in the UI/Agent process.
     time.sleep = interruptible_sleep
+    filename = os.environ.get(PAUSE_ENV)
+    if filename:
+        workers = Path(filename).parent / 'workers'
+        workers.mkdir(parents=True, exist_ok=True)
+        marker = workers / f'{os.getpid()}.active'
+        marker.touch()
+        def unregister():
+            marker.unlink(missing_ok=True)
+            marker.with_suffix('.paused').unlink(missing_ok=True)
+        atexit.register(unregister)

@@ -148,12 +148,12 @@ def main():
         from .manual_planting_ui import ManualPlantingUI
         from .decoded_runtime import snapshot
         from .task_control import check_cancelled
-        from .ui_worker import cycle_lock
+        from .ui_worker import workflow_lock as cycle_lock
     except ImportError:
         from manual_planting_ui import ManualPlantingUI
         from decoded_runtime import snapshot
         from task_control import check_cancelled
-        from ui_worker import cycle_lock
+        from ui_worker import workflow_lock as cycle_lock
     with cycle_lock(), ManualPlantingUI() as ui:
         result = execute_once(request, ui, snapshot, ROOT / '.tmp/manual_planting_execution',
                               check_cancelled=check_cancelled)

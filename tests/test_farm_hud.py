@@ -37,6 +37,9 @@ class FarmHudModelTests(unittest.TestCase):
         desk.reading = True
         desk.generation = 0
         desk.snapshot = None
+        desk.previous_read_link = '未读取'
+        desk.phase = 'idle'
+        desk.live_reads = False
         desk.read_caption = Mock()
         desk.link_var = Mock()
         desk._paint_link = Mock()
@@ -46,6 +49,9 @@ class FarmHudModelTests(unittest.TestCase):
         desk.root = Mock()
         desk.page = 'autorun'
         desk.show = Mock()
+        desk.task_run = SimpleNamespace(poll=lambda: [], active=False)
+        desk._paint_task_state = Mock()
+        desk.closing = False
         desk.stop_all()
         self.assertTrue(desk.reading)
         with patch.object(farm_hud.threading, 'Thread') as thread:
@@ -74,21 +80,9 @@ class FarmHudModelTests(unittest.TestCase):
         self.assertEqual(item['task_name'], '聚会与外卖订单（自动调度）')
         self.assertEqual(dict(farm_hud.config_rows(item))['对应任务'], item['task_name'])
 
-    def test_controls_do_not_describe_a_game_command(self):
-        template = farm_hud.templates(self.interface)[0]
-        started = farm_hud.next_control('start', 'idle', template)
-        self.assertEqual(started['phase'], 'running')
-        self.assertIn(template['task_name'], started['message'])
-        self.assertIn('不点击游戏', started['message'])
-        self.assertNotIn('argv', started)
-        paused = farm_hud.next_control('pause', 'running', template)
-        self.assertEqual(paused['phase'], 'paused')
-        self.assertIn('任务列表停止', paused['message'])
-        idle = farm_hud.next_control('pause', 'idle', template)
-        self.assertEqual(idle['phase'], 'idle')
-        stopped = farm_hud.next_control('stop', 'running', template)
-        self.assertEqual(stopped['phase'], 'idle')
-        self.assertIn('没有向游戏发送输入', stopped['message'])
+    def test_every_template_has_an_actual_execution_entry(self):
+        from tools.hud_task_runner import SUPPORTED
+        self.assertEqual({item['entry'] for item in farm_hud.templates(self.interface)}, set(SUPPORTED))
 
     def test_empty_monitor_matches_the_waiting_desk(self):
         self.assertIn('尚未读取', farm_hud.overview_lines(None))
@@ -247,8 +241,9 @@ class FarmHudWindowTests(unittest.TestCase):
             self.assertIn('等待岗位数据', labels)
             self.assertEqual(str(desk.screen_label.cget('image')), '')
             self.assertIn('未向游戏发送输入', desk.log_box.get('1.0', 'end'))
-            desk.apply_control('start')
-            self.assertIn('不点击游戏', desk.detail_var.get())
+            with patch.object(desk.task_run, 'start') as start, patch.object(farm_hud.task_settings, 'save_task'):
+                desk.apply_control('start')
+            start.assert_called_once()
         finally:
             root.destroy()
 
@@ -301,7 +296,8 @@ class FarmHudLaunchTests(unittest.TestCase):
              contextlib.redirect_stdout(io.StringIO()) as out:
             farm_hud.main()
         launch.assert_called_once_with('monitor')
-        self.assertIn('"read_only": true', out.getvalue())
+        self.assertIn('"auto_start": false', out.getvalue())
+        self.assertIn('"task_controls": true', out.getvalue())
 
     def test_maa_action_opens_the_desk_without_a_controller(self):
         context = SimpleNamespace(tasker=SimpleNamespace(stopping=False))

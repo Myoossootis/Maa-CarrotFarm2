@@ -1,4 +1,10 @@
-﻿import unittest
+﻿import io
+import json
+import os
+from pathlib import Path
+import sys
+import tempfile
+import unittest
 from unittest.mock import patch
 from contextlib import ExitStack
 
@@ -34,6 +40,8 @@ class MonitorSafetyTests(unittest.TestCase):
 
     def run_monitor(self, result=None, error=None):
         with ExitStack() as stack:
+            # OCR collection is opt-in. These cases cover that click path.
+            stack.enter_context(patch.dict(os.environ, {'CARROT_STATE_READER': 'ocr'}))
             for name in [
                 "Win32Controller",
                 "Resource",
@@ -118,6 +126,143 @@ class RepeatCheckboxTests(unittest.TestCase):
             config.verify_saved_plan(object(), object(), "field_1", {"灏忛害": 5})
             state.assert_not_called()
             click.assert_not_called()
+
+
+class CollectReaderDefaultTests(unittest.TestCase):
+    def saved_assignment(self, folder):
+        payload = {
+            'status': 'saved',
+            'assignment_id': '5eb7a435',
+            'operation_dir': 'bound/op',
+            'saved': [{
+                'slot_id': 'field_1',
+                'items': {'小麦': 10},
+                'verified': True,
+                'repeat': False,
+                'one_shot': True,
+            }],
+        }
+        path = Path(folder) / 'assignment.json'
+        path.write_text(json.dumps(payload), encoding='utf-8')
+        operation = {
+            'assignment_id': '5eb7a435',
+            'operation_dir': 'bound/op',
+            'saved': [{'slot_id': 'field_1', 'items': {'小麦': 10}}],
+        }
+        return path, operation
+
+    def test_unset_reader_defaults_to_decoded(self):
+        with patch.dict(os.environ, {}, clear=False):
+            os.environ.pop('CARROT_STATE_READER', None)
+            self.assertEqual(m.select_collect_reader(), 'decoded')
+            self.assertEqual(os.environ['CARROT_STATE_READER'], 'decoded')
+
+    def test_explicit_ocr_is_preserved(self):
+        with patch.dict(os.environ, {'CARROT_STATE_READER': 'ocr'}):
+            self.assertEqual(m.select_collect_reader(), 'ocr')
+            self.assertEqual(os.environ['CARROT_STATE_READER'], 'ocr')
+
+    def test_unknown_reader_is_rejected(self):
+        with patch.dict(os.environ, {'CARROT_STATE_READER': 'guess'}):
+            with self.assertRaises(m.decoded.DecodeError):
+                m.select_collect_reader()
+
+    def test_apply_without_env_selects_decoded_and_binds_operation(self):
+        output = io.StringIO()
+        captured = {}
+
+        def fake_monitor(plans, poll, timeout, expected, operation):
+            captured['reader'] = os.environ.get('CARROT_STATE_READER')
+            captured['operation'] = operation
+            captured['plans'] = plans
+            return {'complete': False, 'recipe_conflict_slots': ['field_1']}
+
+        with tempfile.TemporaryDirectory() as folder:
+            path, operation = self.saved_assignment(folder)
+            argv = ['monitor_employee_products.py', '--assignment-file', str(path),
+                    '--poll-seconds', '5', '--timeout-seconds', '30', '--apply']
+            with patch.dict(os.environ, {}, clear=False), \
+                    patch.object(sys, 'argv', argv), \
+                    patch.object(m.operations, 'active', return_value=operation), \
+                    patch.object(m, 'monitor', side_effect=fake_monitor), \
+                    patch('sys.stdout', output):
+                os.environ.pop('CARROT_STATE_READER', None)
+                self.assertEqual(m.main(), 2)
+                self.assertEqual(os.environ.get('CARROT_STATE_READER'), 'decoded')
+        self.assertEqual(captured['reader'], 'decoded')
+        self.assertEqual(captured['operation']['assignment_id'], '5eb7a435')
+        self.assertEqual(captured['plans'], {'field_1': 10})
+        self.assertIn('监控收取使用解码（CARROT_STATE_READER=decoded）', output.getvalue())
+
+    def test_apply_without_env_rejects_unbound_assignment_before_monitor(self):
+        with tempfile.TemporaryDirectory() as folder:
+            path, _operation = self.saved_assignment(folder)
+            argv = ['monitor_employee_products.py', '--assignment-file', str(path),
+                    '--poll-seconds', '5', '--timeout-seconds', '30', '--apply']
+            with patch.dict(os.environ, {}, clear=False), \
+                    patch.object(sys, 'argv', argv), \
+                    patch.object(m.operations, 'active', return_value=None), \
+                    patch.object(m, 'monitor') as monitor, \
+                    patch('sys.stdout', io.StringIO()), \
+                    patch('sys.stderr', io.StringIO()):
+                os.environ.pop('CARROT_STATE_READER', None)
+                with self.assertRaises(SystemExit):
+                    m.main()
+                self.assertEqual(os.environ.get('CARROT_STATE_READER'), 'decoded')
+            monitor.assert_not_called()
+
+    def test_explicit_ocr_apply_does_not_require_bound_operation(self):
+        output = io.StringIO()
+        captured = {}
+
+        def fake_monitor(plans, poll, timeout, expected, operation):
+            captured['reader'] = os.environ.get('CARROT_STATE_READER')
+            captured['operation'] = operation
+            return {'complete': True}
+
+        with tempfile.TemporaryDirectory() as folder:
+            path, _operation = self.saved_assignment(folder)
+            argv = ['monitor_employee_products.py', '--assignment-file', str(path),
+                    '--poll-seconds', '5', '--timeout-seconds', '30', '--apply']
+            with patch.dict(os.environ, {'CARROT_STATE_READER': 'ocr'}), \
+                    patch.object(sys, 'argv', argv), \
+                    patch.object(m.operations, 'active', side_effect=AssertionError('ocr must not bind')), \
+                    patch.object(m, 'monitor', side_effect=fake_monitor), \
+                    patch('sys.stdout', output):
+                self.assertEqual(m.main(), 0)
+        self.assertEqual(captured, {'reader': 'ocr', 'operation': None})
+        self.assertIn('显式识图不会启用 recipe_conflict_skip', output.getvalue())
+
+    def test_plans_apply_without_env_does_not_fall_through_to_ocr(self):
+        argv = ['monitor_employee_products.py', '--plans', 'field_1=10',
+                '--poll-seconds', '5', '--timeout-seconds', '30', '--apply']
+        with patch.dict(os.environ, {}, clear=False), \
+                patch.object(sys, 'argv', argv), \
+                patch.object(m, 'monitor') as monitor, \
+                patch('sys.stdout', io.StringIO()), \
+                patch('sys.stderr', io.StringIO()):
+            os.environ.pop('CARROT_STATE_READER', None)
+            with self.assertRaises(SystemExit):
+                m.main()
+            monitor.assert_not_called()
+
+    def test_dry_run_does_not_change_reader(self):
+        output = io.StringIO()
+        with tempfile.TemporaryDirectory() as folder:
+            path, _operation = self.saved_assignment(folder)
+            argv = ['monitor_employee_products.py', '--assignment-file', str(path),
+                    '--poll-seconds', '5', '--timeout-seconds', '30']
+            with patch.dict(os.environ, {}, clear=False), \
+                    patch.object(sys, 'argv', argv), \
+                    patch.object(m.operations, 'active', side_effect=AssertionError('preview must not bind')), \
+                    patch.object(m, 'monitor') as monitor, \
+                    patch('sys.stdout', output):
+                os.environ.pop('CARROT_STATE_READER', None)
+                self.assertEqual(m.main(), 0)
+                self.assertIsNone(os.environ.get('CARROT_STATE_READER'))
+            monitor.assert_not_called()
+        self.assertIn('dry run', output.getvalue())
+        self.assertNotIn('监控收取使用', output.getvalue())
 
 
 if __name__ == "__main__":

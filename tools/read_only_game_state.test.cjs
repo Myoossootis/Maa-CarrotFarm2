@@ -61,9 +61,60 @@ test('order capacity uses linked tokens, sums records and keeps zero separate fr
   assert.equal(result.complete,true);
   assert.deepEqual(result.entries.map(x=>[x.category,x.tokenItemId,x.remaining,x.limit]),[['party',103,6,6],['takeout',104,1,6]]);
   assert.equal(orderCapacityOf({records:[]},config).entries[0].remaining,0);
+  assert.equal(orderCapacityOf({records:[]},config).complete,true);
   config.version='91';
   assert.equal(orderCapacityOf({records:[]},config).complete,false);
+  assert.equal(orderCapacityOf({records:[]},config).reason,'unverified_package_version');
   assert.deepEqual(orderCapacityOf({records:[]},config).entries,[]);
+});
+
+test('packages 99 and 100 reuse the capacity contract; unverified packages do not pretend zero',()=>{
+  const {VERIFIED_CAPACITY_PACKAGES}=require('./read_only_game_state.cjs');
+  assert.deepEqual([...VERIFIED_CAPACITY_PACKAGES].sort(),['100','90','99']);
+  for(const version of ['99','100']){
+    const config=capacityConfig();
+    config.version=version;
+    const filled=orderCapacityOf({records:[{itemId:103,count:2},{itemId:104,count:6}]},config);
+    assert.equal(filled.complete,true);
+    assert.equal(filled.semanticsPackageVersion,version);
+    assert.equal(filled.reason,undefined);
+    assert.deepEqual(filled.entries,[
+      {category:'party',tokenItemId:103,remaining:2,limit:6},
+      {category:'takeout',tokenItemId:104,remaining:6,limit:6},
+    ]);
+    const none=orderCapacityOf({records:[]},config);
+    assert.equal(none.complete,true);
+    assert.deepEqual(none.entries.map(row=>row.remaining),[0,0]);
+    const expired=inventoryOf([[1,103,6,'',99],[2,104,1,'',101]],config,100);
+    assert.deepEqual(orderCapacityOf(expired,config).entries.map(row=>row.remaining),[0,1]);
+    const drifted=capacityConfig();
+    drifted.version=version;
+    drifted.items.get(101).params='ref_id,105';
+    drifted.items.set(105,{item_type:24,params:'output_id,501'});
+    drifted.outputs.get(501).item_id=105;
+    assert.throws(()=>orderCapacityOf({records:[{itemId:105,count:6}]},drifted),/token identity/);
+    const badType=capacityConfig();
+    badType.version=version;
+    badType.items.get(103).item_type=1;
+    assert.throws(()=>orderCapacityOf({records:[]},badType),/token type/);
+    const badOutput=capacityConfig();
+    badOutput.version=version;
+    badOutput.outputs.get(501).type=1;
+    assert.throws(()=>orderCapacityOf({records:[]},badOutput),/output/);
+    const badLimit=capacityConfig();
+    badLimit.version=version;
+    badLimit.outputs.get(501).limit=7;
+    assert.throws(()=>orderCapacityOf({records:[{itemId:103,count:4}]},badLimit),/limit/);
+  }
+  for(const version of ['98','101']){
+    const other=capacityConfig();
+    other.version=version;
+    const result=orderCapacityOf({records:[{itemId:103,count:6},{itemId:104,count:6}]},other);
+    assert.equal(result.complete,false);
+    assert.equal(result.reason,'unverified_package_version');
+    assert.equal(result.semanticsPackageVersion,version);
+    assert.deepEqual(result.entries,[]);
+  }
 });
 
 test('expired order tokens do not grant capacity and corrupt mappings or counts fail closed',()=>{
@@ -74,6 +125,106 @@ test('expired order tokens do not grant capacity and corrupt mappings or counts 
     assert.throws(()=>orderCapacityOf({records:[{itemId:103,count}]},config),/capacity/);
   config.outputs.get(501).item_id=104;
   assert.throws(()=>orderCapacityOf({records:[]},config),/capacity/);
+});
+
+function cdConfig(){
+  const config=capacityConfig();
+  config.outputs.get(501).cd=3600;
+  config.outputs.get(501).params='day_limit,6';
+  config.outputs.get(502).cd=3600;
+  config.outputs.get(502).params='day_limit,6';
+  return config;
+}
+
+function shanghaiMidnight(unix){
+  const offset=8*3600;
+  return unix-((unix+offset)%86400);
+}
+
+test('order capacity keeps the raw bag count when the token has no CD clock',()=>{
+  const config=cdConfig();
+  const raw=orderCapacityOf({records:[{itemId:103,count:2},{itemId:103,count:1},{itemId:104,count:4}]},config);
+  assert.deepEqual(raw.entries.map(row=>row.remaining),[3,4]);
+  const plain=capacityConfig();
+  assert.equal(orderCapacityOf({records:[{itemId:103,count:2},{itemId:104,count:6}]},plain).entries[0].remaining,2);
+});
+
+test('bag count plus CD ticks is the client-effective remaining, capped at the limit',()=>{
+  const config=cdConfig();
+  const midnight=shanghaiMidnight(1762300800);
+  const now=midnight+10*3600;
+  const twoHours={itemId:103,count:0,extra:{refresh_time:now-2*3600,repeat_count:0}};
+  const party=orderCapacityOf({records:[twoHours,{itemId:104,count:0}]},config,now);
+  assert.equal(party.complete,true);
+  assert.deepEqual(party.entries.map(row=>row.remaining),[2,0]);
+  const capped=orderCapacityOf({records:[{itemId:103,count:0,extra:{REFRESH_TIME:now-10*3600,REPEAT_COUNT:0}}]},config,now);
+  assert.equal(capped.entries[0].remaining,6);
+  const stacked=orderCapacityOf({records:[{itemId:103,count:5,extra:`r_time,${now-3*3600};rp_c,0`}]},config,now);
+  assert.equal(stacked.entries[0].remaining,6);
+  const sameDay=orderCapacityOf({records:[{itemId:103,count:0,extra:{refresh_time:now-4*3600,repeat_count:5}}]},config,now);
+  assert.equal(sameDay.entries[0].remaining,1);
+  const yesterday=midnight-2*3600;
+  const nextMorning=midnight+3*3600;
+  const rolled=orderCapacityOf({records:[{itemId:103,count:0,extra:{refresh_time:yesterday,repeat_count:6}}]},config,nextMorning);
+  assert.equal(rolled.entries[0].remaining,5);
+  const future=orderCapacityOf({records:[{itemId:103,count:2,extra:{refresh_time:now+60}}]},config,now);
+  assert.equal(future.entries[0].remaining,2);
+  const rowWins=orderCapacityOf(
+    {records:[{itemId:103,count:0,extra:{refresh_time:now-3600}}]},
+    config,now,{103:{refresh_time:now-5*3600}});
+  assert.equal(rowWins.entries[0].remaining,1);
+});
+
+test('missing bag without recover fields stays zero; common storage can supply one clock',()=>{
+  const config=cdConfig();
+  config.version='100';
+  const now=shanghaiMidnight(1762300800)+8*3600;
+  const none=orderCapacityOf({records:[]},config,now,{38:1,87:0});
+  assert.equal(none.complete,true);
+  assert.equal(none.semanticsPackageVersion,'100');
+  assert.deepEqual(none.entries.map(row=>[row.remaining,row.limit]),[[0,6],[0,6]]);
+  const booleanCommon=orderCapacityOf({records:[]},config,now,{104:true});
+  assert.deepEqual(booleanCommon.entries.map(row=>row.remaining),[0,0]);
+  assert.equal(orderCapacityOf({records:[]},config,now,{103:true,104:true}).entries[0].remaining,0);
+  const common={103:{refresh_time:now-2*3600,repeat_count:0},104:'refresh_time,'+(now-3600)+';repeat_count,0'};
+  const recovered=orderCapacityOf({records:[]},config,now,common);
+  assert.deepEqual(recovered.entries.map(row=>row.remaining),[2,1]);
+  const sharedOnce=orderCapacityOf({records:[{itemId:103,count:0},{itemId:103,count:0}]},config,now,{103:{refresh_time:now-2*3600}});
+  assert.equal(sharedOnce.entries[0].remaining,2);
+  const named={bag_note:{item_id:104,REFRESH_TIME:now-3*3600,REPEAT_COUNT:0}};
+  assert.equal(orderCapacityOf({records:[]},config,now,named).entries[1].remaining,3);
+  const expired=inventoryOf([[1,103,0,`refresh_time,${now-7200};repeat_count,0`,now-1]],config,now);
+  assert.equal(orderCapacityOf(expired,config,now).entries[0].remaining,0);
+  const live=inventoryOf([[1,103,0,`refresh_time,${now-7200};repeat_count,0`,now+10]],config,now);
+  assert.equal(orderCapacityOf(live,config,now).entries[0].remaining,2);
+});
+
+test('package 100 still verifies the contract and bad CD fields fail closed',()=>{
+  const config=cdConfig();
+  config.version='100';
+  const now=1_762_300_000;
+  const filled=orderCapacityOf({records:[{itemId:103,count:2},{itemId:104,count:6}]},config,now);
+  assert.equal(filled.complete,true);
+  assert.equal(filled.semanticsPackageVersion,'100');
+  assert.deepEqual(filled.entries.map(row=>row.remaining),[2,6]);
+  const unverified=cdConfig();
+  unverified.version='101';
+  const hidden=orderCapacityOf({records:[{itemId:103,count:0,extra:{refresh_time:now-7200}}]},unverified,now);
+  assert.equal(hidden.complete,false);
+  assert.deepEqual(hidden.entries,[]);
+  const badCd=cdConfig();
+  badCd.outputs.get(501).cd=0;
+  assert.throws(()=>orderCapacityOf({records:[]},badCd),/cd/);
+  const badDay=cdConfig();
+  badDay.outputs.get(501).params='day_limit,0';
+  assert.throws(()=>orderCapacityOf({records:[]},badDay),/day_limit/);
+  const half=cdConfig();
+  delete half.outputs.get(501).params;
+  assert.throws(()=>orderCapacityOf({records:[]},half),/day_limit/);
+  assert.throws(()=>orderCapacityOf({records:[{itemId:103,count:0,extra:{refresh_time:1.5}}]},config,now),/recover field/);
+  assert.throws(()=>orderCapacityOf({records:[{itemId:103,count:0,extra:{refresh_time:now-3600,r_time:now-7200}}]},config,now),/recover field/);
+  assert.throws(()=>orderCapacityOf({records:[{itemId:103,count:0,extra:{refresh_time:now-3600,repeat_count:-1}}]},config,now),/recover field/);
+  assert.throws(()=>orderCapacityOf({records:[{itemId:103,count:1,extra:{refresh_time:now-3600,repeat_count:7}}]},config,now),/recover field/);
 });
 
 function varint(value){const bytes=[];do{bytes.push((value&127)|(value>127?128:0));value>>>=7;}while(value);return Buffer.from(bytes);}

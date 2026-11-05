@@ -12,6 +12,9 @@ from pathlib import Path
 import runpy
 import sys
 
+sys.modules.setdefault('ui_worker', sys.modules[__name__])
+sys.modules.setdefault('tools.ui_worker', sys.modules[__name__])
+
 try:
     from .task_control import TaskCancelled, check_cancelled, install_interruptible_waits
 except ImportError:
@@ -19,6 +22,7 @@ except ImportError:
 
 
 ROOT = Path(__file__).resolve().parents[1]
+_workflow_depth = 0
 
 
 def inherits_cycle_lock():
@@ -113,13 +117,48 @@ def install_safe_inputs():
     frames.build_runtime_resource = source_bundle
 
 
+@contextmanager
+def workflow_lock():
+    """Allow only a verified child or this module's own nested workflow."""
+    global _workflow_depth
+    if _workflow_depth or inherits_cycle_lock():
+        yield
+        return
+    with cycle_lock():
+        _workflow_depth += 1
+        try:
+            yield
+        finally:
+            _workflow_depth -= 1
+
+
+def dispatch(args, forwarded):
+    if args.script == 'cycle':
+        import run_short_cycle
+        sys.argv = ['run_short_cycle.py', *forwarded]
+        return run_short_cycle.main(startup_confirmed=True)
+    if args.script == 'run_daily_orders.py':
+        import run_daily_orders
+        sys.argv = ['run_daily_orders.py', *forwarded]
+        return run_daily_orders.main(startup_confirmed=True)
+    if args.script == 'run_feed_production.py':
+        import run_feed_production
+        sys.argv = [args.script, *forwarded]
+        return run_feed_production.main()
+    if args.script == 'refresh_order.py':
+        import refresh_order
+        sys.argv = [args.script, *forwarded]
+        return refresh_order.main()
+    sys.argv = [args.script, *forwarded]
+    runpy.run_path(str(ROOT / 'tools' / args.script), run_name='__main__')
+    return 0
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('script', choices=['reconcile_production.py', 'run_manual_planting.py', 'run_feed_production.py', 'cycle', 'ensure_ranch_feed.py', 'check_first_orders.py', 'refresh_order.py', 'complete_normal_orders.py', 'complete_batch_orders.py', 'run_employee_order_plan.py', 'monitor_employee_products.py', 'dismiss_offline_income.py', 'enter_restaurant.py', 'enter_farm.py', 'open_phone.py', 'open_employee_config.py', 'select_farm_employment.py', 'open_field_detail.py', 'return_employee_list.py', 'locate_field_2.py', 'open_work_plan.py', 'close_work_plan.py', 'verify_slot_work_plan.py', 'run_daily_orders.py', 'run_normal_order_loop.py'])
     args, forwarded = parser.parse_known_args()
-    protected_step = args.script in {'complete_normal_orders.py', 'run_employee_order_plan.py', 'monitor_employee_products.py'}
-    inherited_normal_lock = protected_step and inherits_cycle_lock()
-    if inherited_normal_lock:
+    if inherits_cycle_lock():
         os.environ.setdefault('CARROT_UI_PARENT_PID', os.environ['CARROT_UI_CYCLE_OWNER'])
     if importlib.metadata.version('MaaFw') != '5.13.1':
         raise RuntimeError('Maa UI worker requires MaaFw 5.13.1; use the project .venv')
@@ -132,34 +171,9 @@ def main():
     sys.path.insert(0, str(ROOT))
     install_interruptible_waits()
     install_safe_inputs()
-    check_cancelled()
-    if args.script == 'cycle':
-        import run_short_cycle
-        sys.argv = ['run_short_cycle.py', *forwarded]
-        with cycle_lock():
-            return run_short_cycle.main(startup_confirmed=True)
-    if args.script == 'run_daily_orders.py':
-        import run_daily_orders
-        sys.argv = ['run_daily_orders.py', *forwarded]
-        with cycle_lock():
-            return run_daily_orders.main(startup_confirmed=True)
-    if args.script == 'run_feed_production.py':
-        import run_feed_production
-        sys.argv = [args.script, *forwarded]
-        with cycle_lock():
-            return run_feed_production.main()
-    if args.script == 'refresh_order.py':
-        import refresh_order
-        sys.argv = ['refresh_order.py', *forwarded]
-        with cycle_lock():
-            return refresh_order.main()
-    sys.argv = [args.script, *forwarded]
-    if protected_step and not inherited_normal_lock:
-        with cycle_lock():
-            runpy.run_path(str(ROOT / 'tools' / args.script), run_name='__main__')
-        return 0
-    runpy.run_path(str(ROOT / 'tools' / args.script), run_name='__main__')
-    return 0
+    with workflow_lock():
+        check_cancelled()
+        return dispatch(args, forwarded)
 
 
 if __name__ == '__main__':

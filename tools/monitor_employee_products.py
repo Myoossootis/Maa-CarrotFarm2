@@ -2,6 +2,8 @@
 
 This does not move the physical cursor or bring the game to the foreground.
 Only two consecutive on-target progress readings authorize a collection click.
+Apply/collect defaults to the decoded state reader so a held recipe mismatch
+becomes recipe_conflict_skip without exporting CARROT_STATE_READER.
 """
 
 from __future__ import annotations
@@ -9,6 +11,7 @@ from __future__ import annotations
 import argparse
 from datetime import datetime, timezone
 import json
+import os
 import time
 from pathlib import Path
 
@@ -131,6 +134,24 @@ def suggested_timeout_seconds(
 
 
 
+def select_collect_reader():
+    """Use decoded state for collect/resume unless the operator opts into OCR.
+
+    An unset ``CARROT_STATE_READER`` used to mean OCR. A saved recipe that no
+    longer matched a slot still holding products then never became
+    ``recipe_conflict_skip``, and that slot kept OCR-polling until timeout.
+    Explicit ``CARROT_STATE_READER=ocr`` keeps recognition and does not arm
+    the skip. Explicit ``decoded`` is unchanged.
+    """
+    mode = os.environ.get('CARROT_STATE_READER')
+    if mode is None or mode == '':
+        os.environ['CARROT_STATE_READER'] = 'decoded'
+        return 'decoded'
+    if mode not in ('ocr', 'decoded'):
+        raise decoded.DecodeError('Unknown CARROT_STATE_READER: ' + mode)
+    return mode
+
+
 def _close_employee_menu_with_retry(controller) -> None:
     """Close employee UI; retry once if the first pass fails map verification."""
     try:
@@ -144,7 +165,7 @@ def _close_employee_menu_with_retry(controller) -> None:
     enter_farm(controller)
 
 
-def monitor(plans: dict[str, int], poll_seconds: int, timeout_seconds: int, expected_items: dict | None = None, operation=None) -> dict:
+def _collect_monitored_plans(plans: dict[str, int], poll_seconds: int, timeout_seconds: int, expected_items: dict | None = None, operation=None) -> dict:
     controller = Win32Controller(
         hWnd=find_window(),
         screencap_method=MaaWin32ScreencapMethodEnum.FramePool,
@@ -160,13 +181,15 @@ def monitor(plans: dict[str, int], poll_seconds: int, timeout_seconds: int, expe
     errors: dict[str, int] = {}
     reset_slots: list[str] = []
     cleared_slots: list[str] = []
+    conflict_slots: list[str] = []
     observations = {}
     def checkpoint(status):
         RESULT.parent.mkdir(parents=True, exist_ok=True)
         write_json(RESULT, {"status": status, "plans": plans, "collected_at_utc": collected,
             "assignment_id": operation['assignment_id'] if operation else None,
             "reset_slots": reset_slots, "cleared_slots": cleared_slots, "observations": observations,
-            "pending": [slot for slot in plans if slot not in collected],
+            "recipe_conflict_slots": list(conflict_slots),
+            "pending": [slot for slot in plans if slot not in collected and slot not in conflict_slots],
             "elapsed_seconds": round(time.monotonic() - started, 1)})
     try:
         tasker.set_save_draw(False)
@@ -186,6 +209,7 @@ def monitor(plans: dict[str, int], poll_seconds: int, timeout_seconds: int, expe
         while len(collected) < len(plans):
             if time.monotonic() - started > timeout_seconds:
                 break
+            conflict_slots.clear()
             for slot_id, required in plans.items():
                 if slot_id in collected:
                     continue
@@ -204,7 +228,23 @@ def monitor(plans: dict[str, int], poll_seconds: int, timeout_seconds: int, expe
                             observations[slot_id] = result
                             checkpoint('monitoring')
                             continue
-                        if decoded.plan_items(slot_id, data) != expected_items[slot_id]:
+                        current_items = decoded.plan_items(slot_id, data)
+                        if current_items != expected_items[slot_id]:
+                            entry = decoded.plan(slot_id, data)
+                            if operations.recipe_conflict_held(entry, current_items, expected_items[slot_id]):
+                                # Another saved slot may still match. Do not click or abort the batch.
+                                result = dict(collected=False, reason='recipe_conflict_skip',
+                                              game_operations=0, progress=None)
+                                errors[slot_id] = 0
+                                observations[slot_id] = result
+                                conflict_slots.append(slot_id)
+                                label = SLOTS.get(slot_id, {}).get('label', slot_id)
+                                line = f'[进度] {label} 配方与已保存计划不一致且仍持有产物，跳过收取且不点击'
+                                if reported.get(slot_id) != line:
+                                    reported[slot_id] = line
+                                    print(line, flush=True)
+                                checkpoint('monitoring')
+                                continue
                             raise decoded.DecodeError(f'{slot_id}: decoded plan identity differs from the saved assignment; no collection click')
                         progress = decoded.progress(slot_id, required, data)
                     else:
@@ -252,6 +292,8 @@ def monitor(plans: dict[str, int], poll_seconds: int, timeout_seconds: int, expe
                     cleared_slots.append(slot_id)
                     checkpoint("monitoring")
             tasker.clear_cache()
+            if not [slot for slot in plans if slot not in collected and slot not in conflict_slots]:
+                break
             if len(collected) < len(plans):
                 # The employee work page stops the farm simulation timer. Leave
                 # it before sleeping so crops and livestock keep producing.
@@ -262,11 +304,18 @@ def monitor(plans: dict[str, int], poll_seconds: int, timeout_seconds: int, expe
         _close_employee_menu_with_retry(controller)
         if operation and len(collected) == len(plans):
             operations.mark(operation, 'collected')
-        checkpoint("complete" if len(collected) == len(plans) else "timed_out")
+        if len(collected) == len(plans):
+            final_status = "complete"
+        elif conflict_slots and all(slot in collected or slot in conflict_slots for slot in plans):
+            final_status = "recipe_conflict_skip"
+        else:
+            final_status = "timed_out"
+        checkpoint(final_status)
         return {
             "complete": len(collected) == len(plans),
             "collected_at_utc": collected,
-            "pending": [slot_id for slot_id in plans if slot_id not in collected],
+            "pending": [slot_id for slot_id in plans if slot_id not in collected and slot_id not in conflict_slots],
+            "recipe_conflict_slots": list(conflict_slots),
             "reset_slots": reset_slots,
             "cleared_slots": cleared_slots,
             "elapsed_seconds": round(time.monotonic() - started, 1),
@@ -279,7 +328,8 @@ def monitor(plans: dict[str, int], poll_seconds: int, timeout_seconds: int, expe
             "reset_slots": reset_slots,
             "cleared_slots": cleared_slots,
             "observations": observations,
-            "pending": [slot for slot in plans if slot not in collected],
+            "recipe_conflict_slots": list(conflict_slots),
+            "pending": [slot for slot in plans if slot not in collected and slot not in conflict_slots],
             "elapsed_seconds": round(time.monotonic() - started, 1),
             "error": str(error),
             "error_type": type(error).__name__,
@@ -297,6 +347,21 @@ def monitor(plans: dict[str, int], poll_seconds: int, timeout_seconds: int, expe
                 value._handle = None
 
 
+def monitor(plans: dict[str, int], poll_seconds: int, timeout_seconds: int, expected_items: dict | None = None, operation=None) -> dict:
+    """Collect/resume entry. Decoded state is the default so conflict skips arm."""
+    previous_reader = os.environ.get('CARROT_STATE_READER')
+    reader_was_unset = previous_reader is None or previous_reader == ''
+    select_collect_reader()
+    try:
+        return _collect_monitored_plans(plans, poll_seconds, timeout_seconds, expected_items, operation)
+    finally:
+        if reader_was_unset:
+            if previous_reader is None:
+                os.environ.pop('CARROT_STATE_READER', None)
+            else:
+                os.environ['CARROT_STATE_READER'] = previous_reader
+
+
 def main() -> int:
     parser = argparse.ArgumentParser()
     source = parser.add_mutually_exclusive_group(required=True)
@@ -306,6 +371,15 @@ def main() -> int:
     parser.add_argument("--timeout-seconds", type=int, default=2700)
     parser.add_argument("--apply", action="store_true")
     args = parser.parse_args()
+    if args.apply:
+        # Bind the operation and arm recipe_conflict_skip before any collect click.
+        # Callers such as run_normal_order_loop inherit this; they need not export
+        # CARROT_STATE_READER. OCR remains an explicit opt-in.
+        mode = select_collect_reader()
+        source_label = '解码' if mode == 'decoded' else '识图'
+        print(f'[数据源] 监控收取使用{source_label}（CARROT_STATE_READER={mode}）', flush=True)
+        if mode == 'ocr':
+            print('[数据源] 显式识图不会启用 recipe_conflict_skip；配方冲突岗位会继续轮询。', flush=True)
     plans: dict[str, int] = {}
     expected_items = None
     operation = None

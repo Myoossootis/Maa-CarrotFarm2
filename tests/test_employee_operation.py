@@ -51,6 +51,28 @@ class EmployeeOperationTests(unittest.TestCase):
         with self.assertRaisesRegex(decoded.DecodeError, 'Unresolved'):
             ops.reconcile_save(self.record, 'field_1', idle())
 
+    def test_only_proven_closed_unsaved_draft_can_be_started_fresh(self):
+        ops.begin_edit(self.record, 'field_1', self.items, idle())
+        with self.assertRaises(decoded.DecodeError):
+            ops.retire_unsaved_edit(self.record, 'field_1', idle())
+        retired = ops.retire_unsaved_edit(self.record, 'field_1', idle(), ui_closed=True)
+        self.assertTrue(Path(retired['discarded_edit_evidence']).is_file())
+        self.assertEqual(ops.read(Path(retired['discarded_edit_evidence']))['entry']['status'], 'editing')
+        restarted = ops.begin_edit(self.record, 'field_1', self.items, idle())
+        self.assertEqual(restarted['status'], 'editing')
+        self.assertEqual(restarted['discarded_edit_evidence'], retired['discarded_edit_evidence'])
+
+    def test_discard_draft_rejects_save_intent_existing_production_and_worker_change(self):
+        ops.begin_edit(self.record, 'field_1', self.items, idle())
+        changed = idle();decoded.plan('field_1', changed)['employees'][0]['uid'] += 1
+        for data in (ready(), changed):
+            with self.assertRaises(decoded.DecodeError):
+                ops.retire_unsaved_edit(self.record, 'field_1', data, ui_closed=True)
+        ops.reserve_save(self.record, 'field_1', idle())
+        with self.assertRaises(decoded.DecodeError):
+            ops.retire_unsaved_edit(self.record, 'field_1', idle(), ui_closed=True)
+        self.assertEqual(ops.read(ops.job_path(self.record, 'field_1'))['status'], 'save_intent')
+
     def test_worker_change_or_new_production_prevents_save(self):
         ops.begin_edit(self.record, 'field_1', self.items, idle())
         for kind in ('worker','plan'):
@@ -58,6 +80,14 @@ class EmployeeOperationTests(unittest.TestCase):
             if kind == 'worker': decoded.plan('field_1', data)['employees'][0]['uid'] += 1
             else: decoded.plan('field_1', data)['targets'] = ready()['employees']['plans'][0]['targets']
             with self.assertRaises(decoded.DecodeError): ops.reserve_save(self.record, 'field_1', data)
+        self.assertEqual(ops.read(ops.job_path(self.record, 'field_1'))['status'], 'editing')
+
+    def test_changed_order_after_pause_blocks_before_save_intent(self):
+        ops.begin_edit(self.record, 'field_1', self.items, idle())
+        self.record['allocation']['bound_target'] = {'game_order_uid': 123}
+        with patch.object(ops, 'validate_target', side_effect=decoded.DecodeError('changed while paused')):
+            with self.assertRaises(decoded.DecodeError):
+                ops.reserve_save(self.record, 'field_1', idle())
         self.assertEqual(ops.read(ops.job_path(self.record, 'field_1'))['status'], 'editing')
 
     def saved(self):
@@ -117,6 +147,18 @@ class EmployeeOperationTests(unittest.TestCase):
             workers.configure_items(None, None, 'field_1', self.items,
                 before_save=lambda data: ops.reserve_save(self.record, 'field_1', data))
         self.assertEqual(len(saves), 1)
+
+    def test_held_recipe_conflict_is_not_superseded(self):
+        self.saved()
+        record = ops.mark(self.record, 'saved')
+        data = ready()
+        entry = decoded.plan('field_1', data)
+        entry['targets'] = [{'name': '番茄', 'itemId': 1, 'count': 8}]
+        entry['heldProducts'] = [{'name': '番茄', 'itemId': 1, 'count': 8}]
+        with self.assertRaises(decoded.DecodeError):
+            ops.supersede_cleared_plans(record, data)
+        self.assertEqual(ops.active(self.root)['status'], 'saved')
+        self.assertFalse((Path(record['operation_dir']) / 'supersede_cleared.json').exists())
 
     def test_supersede_cannot_hide_unconfirmed_claim_or_accumulated_products(self):
         self.saved()

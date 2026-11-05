@@ -24,8 +24,19 @@ sys.modules.setdefault('tools.decoded_runtime', sys.modules[__name__])
 ROOT = Path(__file__).resolve().parents[1]
 _selection = ContextVar('decoded_order_selection', default=None)
 
-# Ordinary-order / employee-plan path. Party/takeout capacity stays on 90 until rechecked.
-VERIFIED_NORMAL_PACKAGES = frozenset({'90', '98'})
+# Ordinary-order package-string gate. Packages 90, 98 and 99 have checked
+# normal-order semantics (99 reuses the 98 ViewFarm timing: byte-identical
+# getOutputProgress, CROP_IDX, OUTPUT_TYPE, SRATE). Package 100 is listed so
+# automation reads do not fail closed on the package string alone; its
+# production timing is not verified and is not claimed here.
+# Party/takeout capacity uses the same cfg contract on 90, 99 and 100
+# (100 checked live 2026-11-05). remaining is the client-effective count
+# already computed in Node: non-expired bag rows plus CD/day_limit ticks when
+# a refresh time is persisted, capped at the output limit. This module does
+# not recompute ticks. Package 98 stays out of capacity until that contract
+# is rechecked for it.
+VERIFIED_NORMAL_PACKAGES = frozenset({'90', '98', '99', '100'})
+VERIFIED_CAPACITY_PACKAGES = frozenset({'90', '99', '100'})
 
 
 class DecodeError(RuntimeError):
@@ -176,18 +187,22 @@ def order_capacity(kind, data=None):
     data = snapshot() if data is None else data
     validate(data)
     capacity = data.get('orderCapacity') or {}
+    version = data.get('packageVersion')
     if not isinstance(capacity, dict):
         raise DecodeError('Order capacity schema is invalid')
     entries = capacity.get('entries', [])
-    if (kind not in ('party', 'takeout') or data.get('packageVersion') != '90'
-            or capacity.get('complete') is not True or capacity.get('semanticsPackageVersion') != '90'
+    if kind not in ('party', 'takeout') or version not in VERIFIED_CAPACITY_PACKAGES:
+        raise DecodeError(f'Order capacity package {version!r} is unverified')
+    if (capacity.get('complete') is not True or capacity.get('semanticsPackageVersion') != version
             or not isinstance(entries, list) or len(entries) != 2 or not all(isinstance(row, dict) for row in entries)
             or {row.get('category') for row in entries} != {'party', 'takeout'}):
-        raise DecodeError('Order capacity is missing, incomplete or unverified')
+        reason = capacity.get('reason') or 'incomplete'
+        raise DecodeError('Order capacity is missing, incomplete or unverified: ' + str(reason))
     for row in entries:
         if (row.get('tokenItemId') != {'party': 103, 'takeout': 104}[row['category']]
                 or type(row.get('remaining')) is not int or not 0 <= row['remaining'] <= 2**53 - 1
-                or type(row.get('limit')) is not int or not 1 <= row['limit'] <= 6):
+                or type(row.get('limit')) is not int or not 1 <= row['limit'] <= 6
+                or row['remaining'] > row['limit']):
             raise DecodeError('Order capacity count or identity is invalid')
     return next(row for row in entries if row['category'] == kind)
 

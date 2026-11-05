@@ -172,7 +172,7 @@ class RunShortCycle(CustomAction):
         if stopping():
             print("[停止] 短循环启动前已取消。", flush=True)
             return False
-        if apply:
+        if apply and getattr(argv, 'ui_start_confirmed', False) is not True:
             print("[日常] 短循环将弹出清地确认（60秒超时，日志会心跳）。", flush=True)
             if not confirm_cycle_start(is_stopping=stopping):
                 print("[错误] 未确认清地或超时，短循环取消。", flush=True)

@@ -49,6 +49,17 @@ test('verified package 90 decodes fields, orchards and feed-limited ranches',()=
   assert.equal(data98.complete,true);
   assert.equal(data98.semanticsPackageVersion,'98');
   assert.equal(data98.states.unknown,0);
+  const current99={...config,version:'99'};
+  assert.equal(decodeSlot('103_1000_1_2',null,current99,1100,0).status,'growing');
+  assert.equal(decodeSlot('301_1000_0_3',null,current99,4600,0).status,'mature');
+  const data99=productionOf(inventory(),current99,1100);
+  assert.equal(data99.complete,true);
+  assert.equal(data99.semanticsPackageVersion,'99');
+  assert.equal(data99.states.unknown,0);
+  const bogus=productionOf(inventory(),{...config,version:'100'},1100);
+  assert.equal(bogus.complete,false);
+  assert.equal(bogus.semanticsPackageVersion,null);
+  assert.equal(decodeSlot('103_1000_1_2',null,{...config,version:'100'},1100,0).status,'unknown');
 });
 
 test('charged animal credits earlier segments and does not mistake feed durations for item counts',()=>{

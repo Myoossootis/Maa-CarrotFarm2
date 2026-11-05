@@ -182,7 +182,9 @@ def action_values(context, argv):
     node = deepcopy(context.get_node_data(argv.node_name) or {})
     if not isinstance(parameters, dict) or not isinstance(node, dict):
         raise ValueError('任务参数必须为对象')
-    overrides = load_settings().get(argv.node_name, {})
+    snapshot = getattr(argv, 'task_options_snapshot', None)
+    overrides = (load_settings().get(argv.node_name, {}) if snapshot is None
+                 else validate_options(argv.node_name, snapshot))
     catalog = interface() if overrides else None
     for name, value in overrides.items():
         override = option_override(argv.node_name, name, value, catalog)
