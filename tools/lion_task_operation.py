@@ -9,6 +9,40 @@ from tools.runtime_state import write_json
 ROOT = Path(__file__).resolve().parents[1] / '.tmp/lion_tasks'
 
 
+def supports(task):
+    requirement = task.get('requirement') or {}
+    return (task.get('taskItemId') == 3875 and task.get('isUpgraded') is True
+            and requirement.get('kind') == 'harvest' and requirement.get('productItemId') == 29
+            and (task.get('bellReward') or {}).get('count') == 82)
+
+
+def acquisition_root(data):
+    """Link a selected task to a new execution record; retain the old receipt."""
+    from tools import lion_acquisition as acquisition
+    from tools.employee_operation import read
+    pointer = read(acquisition.ROOT / 'active.json')
+    if pointer is None:
+        return ROOT
+    key = pointer.get('id')
+    if not isinstance(key, str) or len(key) != 32 or any(c not in '0123456789abcdef' for c in key):
+        raise decoded.DecodeError('狮王选取指针损坏，不能改绑执行')
+    record = read(acquisition.ROOT / key / 'acquisition.json')
+    if (not record or record.get('folder') != str(acquisition.ROOT / key)
+            or record.get('id') != key or record.get('status') != 'ready'):
+        raise decoded.DecodeError('狮王选取尚未完成，先从选取入口恢复')
+    acquisition.verify_identity(record, data)
+    task = record['readyTask']
+    if not supports(task):
+        raise decoded.DecodeError('该UP已选定，但条件执行器尚未接入；保留任务，不刷新或退出')
+    root = acquisition.ROOT / key / 'execution'
+    pointer = read(root / 'active.json')
+    if not pointer:
+        current = bind(data)
+        if current['slotUid'] != task['uid'] or current['personalUid'] != record['readyPersonalUid']:
+            raise decoded.DecodeError('选取回执与本人任务实例不一致，不能绑定执行')
+    return root
+
+
 def personal(binding, data):
     rows = [r for r in data['inventory']['records'] if r['uid'] == binding['personalUid']]
     if len(rows) != 1 or rows[0]['itemId'] != binding['taskItemId'] or int(rows[0]['extra'].get('r_id', 0)) != binding['slotUid']:

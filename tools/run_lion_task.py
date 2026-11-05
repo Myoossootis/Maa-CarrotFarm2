@@ -221,19 +221,23 @@ def main():
     from tools.lion_task_ui import LionUI
     from tools.ui_worker import workflow_lock
     with workflow_lock():
-        pointer = employees.read(lion.ROOT / 'active.json')
+        # Resolve a completed acquisition before consulting the older one-task
+        # pointer. Old reward/production evidence is never deleted or replayed.
+        data = full_snapshot() if employees.read(Path(__file__).resolve().parents[1] / '.tmp/lion_acquisition/active.json') else decoded.snapshot()
+        root = lion.acquisition_root(data)
+        pointer = employees.read(root / 'active.json')
         if not pointer:
-            ui = LionUI(lion.ROOT / 'navigation')
+            ui = LionUI(root / 'navigation')
             try:
                 ui.open_board()
                 data = full_snapshot()
-                write_json(lion.ROOT / 'initial.json', data)
-                record = lion.begin(data)
+                write_json(root / 'initial.json', data)
+                record = lion.begin(data, root=root)
                 ui.leave_board()
             finally:
                 ui.close()
         else:
-            record = lion.begin(decoded.snapshot())
+            record = lion.begin(decoded.snapshot(), root=root)
         return 0 if execute(record, prepare_only=args.prepare_production_only) else 2
 
 
