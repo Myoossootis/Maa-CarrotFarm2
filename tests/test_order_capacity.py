@@ -62,6 +62,8 @@ class CapacityTests(unittest.TestCase):
                     decoded.order_capacity('party', limited)
             with self.assertRaisesRegex(decoded.DecodeError, "98.*unverified"):
                 decoded.order_capacity('party', self.data(6, '98'))
+            with self.assertRaisesRegex(decoded.DecodeError, 'invalid'):
+                decoded.order_capacity('party', self.data(7, '100'))
 
     def test_zero_and_insufficient_capacity_wait_but_disagreement_is_unknown(self):
         for remaining,required,status in ((0,6,'order_capacity_exhausted'),(1,6,'order_batch_unavailable'),(1,1,'available'),(6,6,'available')):
@@ -71,6 +73,12 @@ class CapacityTests(unittest.TestCase):
                 result=board.probe_availability(None,None,'party',required_count=required)
             self.assertEqual(result['status'],status)
             self.assertIsNone(result['next_available'])
+        current=dict(status='available',reason='visible_order_card',ui_counter=[4,6],next_available=None)
+        with patch.object(board,'read_availability',return_value=current),patch.object(board,'screenshot'), \
+                patch.object(decoded,'enabled',return_value=True),patch.object(decoded,'order_capacity',return_value=capacity(4)):
+            matched=board.probe_availability(None,None,'party',required_count=4)
+        self.assertEqual(matched['status'],'available')
+        self.assertEqual(matched['capacity']['remaining'],4)
         for counter in (None,[0,6],[6,12],[True,6]):
             current=dict(status='available',ui_counter=counter)
             with patch.object(board,'read_availability',return_value=current),patch.object(board,'screenshot'), \

@@ -1,5 +1,13 @@
 # 版本记录
 
+## 0.13.5 — 2026-11-05
+
+- 聚会／外卖 `orderCapacity.remaining` 改为客户端有效次数：未过期的 103／104 `item_num`，加上产出为 CD 日限道具时尚未写回背包的恢复 tick。产出类型 2 且同时带正整数 `cd` 与 `params.day_limit` 才计算；`iCdNum = min(floor((now-refresh)/cd), limit-count, day_limit-当日已恢复)`，合计后再封顶到 `output.limit`。刷新时间读 `refresh_time`／`REFRESH_TIME`／`r_time`，重复次数读 `repeat_count`／`REPEAT_COUNT`／`rp_c`。重复次数只扣刷新时间所在的 Asia/Shanghai 当日；缺省按 0。没有正的刷新时间就不加 tick。
+- 背包行自己带刷新时间时以该行为准。行存在但没有时钟时，公共存储里该道具的同一字段只当作一叠来补一次。背包完全没有该行、公共存储也没有正的刷新时间时，`remaining` 仍为 0，`complete` 仍为真。不会在没有证据时把 `remaining` 写成 `limit`。
+- 2026-11-05（Asia/Singapore，包 100）聚会横幅是完成订单次数 6/6，解码契约已通过，但 MMKV 没有 103／104 行（`rawTok=[]`），快照里也没有上述恢复字段。客户端 BagCache 可以把未落盘的 CD 显示成 6；这种空背包仍报 0。正式流程继续比较界面分子分母，对不上仍是 `capacity_ui_cache_mismatch`，不购买次数，也不把 0 当成未核对。
+- 90／99／100 的身份、类型、上限契约不变。`cd` 与 `day_limit` 只出现一个、不是正整数，或恢复字段冲突、重复次数为负、当日重复次数超过 `day_limit`，都失败关闭。98 及其他包版本仍是 `unverified_package_version`。Python `order_capacity` 另外要求 `remaining` 不超过该条 `limit`。时钟用本机 UTC，没有读取客户端服务器校时。
+- 验证：Node 容量回归覆盖纯背包数量、背包 0 加 CD tick 直至上限、缺行且无恢复字段仍为 0，以及包 100 仍放行；`tests/test_order_capacity.py` 覆盖界面与缓存一致和对不上。本次没有游戏点击。见 [次数包版本](docs/ORDER_CAPACITY_PACKAGES.md)。
+
 ## 0.13.4 — 2026-11-05
 
 - 聚会／外卖次数对客户端 100 使用与 90、99 相同的配置契约：订单物品 101／102 的 `ref_id` 必须仍指向 103／104，道具类型 24，关联 `cfg_output` 类型 2 且上限为 1–6。通过后 `orderCapacity.complete` 为真，余额只累加未过期库存。2026-11-05 实机 MMKV 读到该契约，103／104 库存为空，所以 `remaining` 为 0；这是明确的 0，不是未核对。界面也是 0/6 时正式流程返回 `order_capacity_exhausted` 并等待，直到出现次数道具。契约对不上会抛出具体配置错误，不会把次数写成 0。
