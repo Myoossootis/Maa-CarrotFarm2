@@ -41,6 +41,7 @@ def main():
         'RefreshOrder': production_actions.RefreshOrder(),
         'RunFeedProduction': production_actions.RunFeedProduction(),
         'RunOwnLionUP': production_actions.RunOwnLionUP(),
+        'RunLionAcquisition': production_actions.RunLionAcquisition(),
     }
     for name, action in actions.items():
         if not AgentServer.register_custom_action(name, action):

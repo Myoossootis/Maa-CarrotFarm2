@@ -285,7 +285,9 @@ test('structured UP harvest, restaurant, stars, and forward upgrade are independ
   const {config,records}=fixture();
   config.items.set(173,{item_type:7});
   config.items.get(3879).params='mutation_id,4000';
+  config.items.set(4000,{item_type:13,desc:'description',quality:2,params:''});
   config.tasks.set(4000,{check_condi:'3944,181,3948,6',reward_box_id:1});
+  config.bellRewards.set(1,config.bellRewards.get(73194));
   let task=familyFromRecords(records,[],config,100).tasks[0];
   assert.equal(task.requirement.kind,'harvest');
   assert.equal(task.requirement.staffItemId,2013);
@@ -293,6 +295,7 @@ test('structured UP harvest, restaurant, stars, and forward upgrade are independ
   assert.equal(task.requirement.count,172);
   assert.equal(task.canUpgrade,true);
   assert.equal(task.upgradeItemId,4000);
+  assert.equal(task.upgrade.requirement.kind,'party_takeout');
   assert.equal(task.isUpgraded,false);
   config.tasks.get(3879).check_condi='3944,181,3948,6';
   task=familyFromRecords(records,[],config,100).tasks[0];
@@ -305,6 +308,33 @@ test('structured UP harvest, restaurant, stars, and forward upgrade are independ
   config.tasks.get(3879).check_condi='999,181,3948,6';
   task=familyFromRecords(records,[],config,100).tasks[0];
   assert.equal(task.requirement.kind,'unknown');
+});
+
+test('upgrade fee is separate from forward reward; regular harvest and quit clock are explicit',()=>{
+  const {config,records}=fixture();
+  config.version='100';
+  config.items.set(5554,{params:'limit,136'});
+  config.items.set(3921,{params:'cd,120'});
+  config.items.set(173,{item_type:7});
+  config.items.get(3879).params='mutation_id,4000';
+  config.items.set(4000,{item_type:13,desc:'description',quality:2,params:'mutation_ref_id,3879'});
+  config.tasks.set(4000,{check_condi:'3944,2013,173,344',reward_box_id:2});
+  config.bellRewards.set(2,[{item_num_min:164,item_num_max:164,drop_rate:10000,drop_type:1}]);
+  let task=familyFromRecords(records,[],config,100).tasks[0];
+  assert.equal(task.upgradeCost.count,136);
+  assert.equal(task.upgrade.bellReward.count,164);
+  assert.equal(task.upgrade.upgrade,null);
+  config.tasks.get(3879).check_condi='687,1,173,12';
+  task=familyFromRecords(records,[],config,100).tasks[0];
+  assert.equal(task.requirement.kind,'regular_harvest');
+  const {familyContextOf}=require('./read_only_game_state.cjs');
+  const rows=[{itemId:3921,extra:{season:'1',lv:'4'}},{itemId:3628,extra:{plrd:'1:7',r_id:'8'}}];
+  config.lionLevels=[{level:4,params:'datas,4185_3970_71190_71159_71191_2_71192_20_71193_55'}];
+  let ctx=familyContextOf({records:rows},config);
+  assert.equal(ctx.quitStartedUnix,0);
+  assert.deepEqual(ctx.rules.refreshTiers,[{boxId:71191,cost:2},{boxId:71192,cost:20}]);
+  rows[0].extra.cd='bad';
+  assert.equal(familyContextOf({records:rows},config).quitStartedUnix,null);
 });
 
 function fixture(){

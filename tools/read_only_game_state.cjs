@@ -149,8 +149,9 @@ function configuration(applet){
   const orderLevels=new Map((tables.get('cfg_level')||[]).filter(x=>x.type===4).map(x=>[x.item_id+':'+x.level,x]));
   const outputs=new Map((tables.get('cfg_output')||[]).map(x=>[x.id,x]));
   const prices=tables.get('cfg_price')||[];
+  const lionLevels=(tables.get('cfg_level')||[]).filter(x=>x.type===7&&x.item_id===3921);
   const playerLevels=(tables.get('cfg_level')||[]).filter(x=>x.type===0&&x.item_id===0).sort((a,b)=>a.level-b.level);
-  return {version,items,language,tasks,bellRewards,orderLevels,outputs,prices,playerLevels,name};
+  return {version,items,language,tasks,bellRewards,orderLevels,outputs,prices,playerLevels,lionLevels,name};
 }
 
 function itemAmounts(raw,config){
@@ -405,7 +406,7 @@ function employeesOf(bag,common,config){
   })};
 }
 
-function taskDescription(id,config){
+function taskDescription(id,config,includeUpgrade=true){
   const task=config.tasks.get(id),item=config.items.get(id);
   if(!task||!item) throw Error('Unknown family task: '+id);
   const description=config.language.get(item.desc)||item.desc||'';
@@ -427,19 +428,28 @@ function taskDescription(id,config){
       else if(PRODUCT_TYPES.has(config.items.get(eventId)?.item_type))
         requirement={kind:'harvest',staffItemId,staffName:config.name(staffItemId),productItemId:eventId,productName:config.name(eventId),count,workplace:'farm'};
     }
-  }else if(condition.every(Number.isSafeInteger)&&condition[0]===3949&&condition.length===3&&condition[1]>0&&condition[2]>0)
+  }else if(condition.every(Number.isSafeInteger)&&condition[0]===687&&condition.length===4&&condition[1]===1&&PRODUCT_TYPES.has(config.items.get(condition[2])?.item_type)&&condition[3]>0)
+    requirement={kind:'regular_harvest',productItemId:condition[2],count:condition[3]};
+  else if(condition.every(Number.isSafeInteger)&&condition[0]===3949&&condition.length===3&&condition[1]>0&&condition[2]>0)
     requirement={kind:'star_orders',stars:condition[1],count:condition[2]};
   const upgradeItemId=Number(params.mutation_id)||null;
+  // Package100: the upgrade button is a COST, not the resulting bell reward.
+  // Only one forward edge is exposed; malformed/cyclic targets cannot recurse.
+  const upgrade=includeUpgrade&&upgradeItemId&&config.tasks.has(upgradeItemId)?
+    {taskItemId:upgradeItemId,...taskDescription(upgradeItemId,config,false)}:null;
+  const limit=Number(extraOf(config.items.get(5554)?.params).limit);
+  const upgradeCost=upgrade&&config.version==='100'&&Number.isSafeInteger(limit)&&limit>0?
+    {itemId:4030,count:Math.min(2*rewards[0].item_num_min-2,limit)}:null;
   return {text,condition:task.check_condi,target:description.startsWith('完成')?args[1]:args[2],
     durationSeconds:Number(params.expire_cd)||null,quality:item.quality,
     isRare:item.quality>0,rarity:item.quality>0?'rare':'normal',
     isUpgraded:Number(params.mutation_ref_id)>0,requirement,
-    canUpgrade:upgradeItemId!==null&&config.tasks.has(upgradeItemId),upgradeItemId,
+    canUpgrade:upgradeItemId!==null&&config.tasks.has(upgradeItemId),upgradeItemId,upgrade,upgradeCost,
     rewardBoxId:task.reward_box_id,
     bellReward:{itemId:3638,name:'铃铛',count:rewards[0].item_num_min,source:'task_configuration'}};
 }
 
-function familyContextOf(inventory){
+function familyContextOf(inventory,config){
   const rows=inventory.records;
   const unique=id=>{const matches=rows.filter(x=>x.itemId===id);return matches.length===1?matches[0]:null;};
   const family=unique(3628),match=unique(3921);
@@ -450,10 +460,22 @@ function familyContextOf(inventory){
   const staff=rows.filter(x=>x.type===5).map(x=>({uid:x.uid,itemId:x.itemId,name:x.name,
     level:positive(x.extra.lv),posts:rows.filter(b=>b.type===3&&String(b.extra.equip_ids||'').split('_').includes(String(x.uid)))
       .map(b=>({buildingUid:b.uid,buildingItemId:b.itemId,buildingName:b.name}))}));
+  const level=match&&match.extra.lv===undefined?1:positive(match?.extra.lv);
+  const levels=(config?.lionLevels||[]).filter(x=>x.level===level);
+  const datas=levels.length===1?String(extraOf(levels[0].params).datas||'').split('_').map(Number):[];
+  const refreshTiers=[];
+  if(datas.length>=8&&datas.length%2===0&&datas.every(Number.isSafeInteger)){
+    for(let i=4;i<datas.length;i+=2) if([2,20].includes(datas[i+1])) refreshTiers.push({boxId:datas[i],cost:datas[i+1]});
+  }
+  const quitStartedUnix=match&&match.extra.cd===undefined?0:
+    match&&/^\d+$/.test(String(match.extra.cd))&&Number.isSafeInteger(Number(match.extra.cd))?Number(match.extra.cd):null;
   return {selfUid:positive(profile['1']),familyUid:positive(family?.extra.r_id),season:positive(match?.extra.season),
     periodTarget:26,completed:null,quotaVerified:false,
     rawQuotaRows:rows.filter(x=>x.itemId===3956).map(x=>({uid:x.uid,count:x.count,expiresAt:x.expiresAt})),
-    staff,notes:['3956余额不能直接换算已完成次数；期数、次数扣减和额外次数语义尚待核对。']};
+    quitStartedUnix,
+    rules:config?.version==='100'?{quitCooldownSeconds:Number(extraOf(config.items.get(3921)?.params).cd),
+      refreshTiers,voucherItemId:4030}:null,
+    staff,notes:['3956余额不能直接换算本期已完成次数；接取／退出不扣减，完成领奖才扣减1。']};
 }
 
 function progressOf(extra,personal,target){
@@ -488,6 +510,8 @@ function familyFromRecords(records,bag,config,now){
       const bell=itemAmounts(rewardOverride,config).find(x=>x.itemId===3638);
       if(bell) definition.bellReward={itemId:3638,name:'铃铛',count:bell.count,source:personal?'personal_bag':'shared_cache'};
     }
+    if(definition.upgradeCost) definition.upgradeCost.count=Math.min(2*definition.bellReward.count-2,
+      Number(extraOf(config.items.get(5554)?.params).limit));
     return {slot,uid:record.uid,taskItemId:taskId,...definition,
       status:acceptorUid?'occupied':Number(extra.r_time)>now?'cooling_down':'unclaimed',
       acceptor:member(acceptorUid),upgrader:member(upgraderUid),upgradeCount:Number(extra.sp_c)||0,
@@ -537,7 +561,7 @@ function buildReport(options,ctx){
     if(!processes) throw Error('Family board requires a fresh process list');
     data.family=stage('familyMs',()=>familyOf(options,processes,hints,state.bag,config,now));
   }
-  if(['family','all','automation'].includes(options.mode)) data.familyContext=familyContextOf(inventory);
+  if(['family','all','automation'].includes(options.mode)) data.familyContext=familyContextOf(inventory,config);
   return {schemaVersion:1,mode:options.mode,readOnly:true,capturedAt:snapshot.capturedAt,completedAt:new Date().toISOString(),
     source:'local_client_cache',packageVersion:config.version,storageSequence:snapshot.sequence,keyAddressHintUsed:hintUsed,
     timings,notes:['Client cache snapshot; server state may have changed.','Occupied tasks can omit shared progress; null does not mean zero.','No game operation, network request, process write, or key persistence.'],...data};

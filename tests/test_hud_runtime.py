@@ -25,7 +25,8 @@ def defaults(entry):
 class TaskDispatchTests(unittest.TestCase):
     def test_unverified_package_or_batch_semantics_block_before_action(self):
         from tools import decoded_runtime as decoded
-        cases = [('RunNormalOrderLoop', '999'), ('RunDailyPartyOrders', '98')]
+        cases = [('RunNormalOrderLoop', '999'), ('RunDailyPartyOrders', '98'),
+                 ('RunLionAcquisition', '99'), ('RunOwnLionUP', '99')]
         with tempfile.TemporaryDirectory() as temp:
             request_file = Path(temp) / 'request.json'
             for entry, package in cases:
@@ -43,6 +44,7 @@ class TaskDispatchTests(unittest.TestCase):
 
     def test_all_thirteen_templates_dispatch_to_original_workers_with_correct_mode(self):
         expected = {
+            'RunLionAcquisition': ('run_lion_acquisition.py', True),
             'RunOwnLionUP': ('run_lion_task.py', True),
             'RunDailyBatchOrders': ('run_daily_orders.py', True),
             'RunDailyPartyOrders': ('run_daily_orders.py', True),
