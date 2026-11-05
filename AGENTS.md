@@ -1,6 +1,6 @@
 # 项目开发约定
 
-遵循用户的 Karpathy Guidelines，并阅读根目录 `CONTRIBUTING.md`。先明确复现和验收，再做最小修改，保留无关用户工作。
+阅读根目录 `CONTRIBUTING.md`。Karpathy Guidelines 仅在用户明确要求时调用（2026-11-05全局偏好更新）。先明确复现和验收，再做最小修改，保留无关用户工作。
 
 - 每项交付在主题分支单独提交，记录行为变化、测试结果与剩余限制；版本以 `assets/interface.json` 为准，更新 `CHANGELOG.md` 并运行 `tools/check_version.py`。
 - 使用现有本地只读解码与 Maa 视觉输入模块；Cocos／Frida／WMPF 内部调用实验保持封存，不恢复或接入。
