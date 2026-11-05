@@ -142,8 +142,9 @@ def claim(record):
     if record['status'] == 'reward_claimed':
         return return_after_reward(record)
     if record['status'] in ('reward_intent', 'reward_unconfirmed'):
-        if lion.reward_confirmed(binding, record['reward_before'], decoded.snapshot()):
-            record.update(status='reward_claimed', completed_tasks=1, reward_recovered=True)
+        after = decoded.snapshot()
+        if lion.reward_confirmed(binding, record['reward_before'], after):
+            record.update(status='reward_claimed', completed_tasks=1, reward_recovered=True, reward_after=after)
             lion.save(record)
             return return_after_reward(record)
         raise decoded.DecodeError('上次狮王领奖结果未确认；保留意图，禁止重复领取')
@@ -196,6 +197,9 @@ def return_after_reward(record):
         raise decoded.DecodeError('领奖后账户或期数改变，不导航')
     ui = LionUI(Path(record['folder']) / 'return_ui')
     try:
+        reward_footer = (170, 1037, 385, 75)
+        if ui.text(reward_footer) == '点击空白区域继续':
+            ui.click_label('点击空白区域继续', reward_footer)
         if ui.text((229, 1202, 228, 40)) == '点击空白区域继续':
             ui.click_label('点击空白区域继续', (229, 1202, 228, 40))
         ui.leave_board()

@@ -125,6 +125,25 @@ def reconcile_partial_save(operation, slot, before, after):
     return entry
 
 
+def reward_proxy_count(data):
+    """100: hidden TASK_COUNT5740 is stored in real item2739.it_rc."""
+    rows = [r for r in data['inventory']['records'] if r['itemId'] == 2739]
+    if len(rows) != 1:
+        raise decoded.DecodeError('狮王额外奖励计数载体缺失或重复')
+    raw = rows[0].get('extra', {}).get('it_rc')
+    if not isinstance(raw, str):
+        raise decoded.DecodeError('额外奖励计数格式未知')
+    counts = {}
+    for pair in raw.split('#'):
+        parts = pair.split('_')
+        if len(parts) != 2 or any(not value.isdecimal() for value in parts) or parts[0] in counts:
+            raise decoded.DecodeError('额外奖励计数损坏或重复')
+        counts[parts[0]] = int(parts[1])
+    if '5740' not in counts or counts['5740'] > 2**53 - 1:
+        raise decoded.DecodeError('额外奖励5740计数未确认')
+    return counts['5740']
+
+
 def reward_confirmed(binding, before, after):
     decoded.validate(after)
     if any((after.get('familyContext') or {}).get(key) != binding[key] for key in ('selfUid', 'familyUid', 'season')):
@@ -135,4 +154,4 @@ def reward_confirmed(binding, before, after):
     gone = old is None or (old['itemId'] == binding['taskItemId'] and str(old['extra'].get('status')) == '3')
     return (gone and decoded.item_count(3956, before) - decoded.item_count(3956, after) == 1
             and decoded.item_count(3638, after) - decoded.item_count(3638, before) == binding['bellReward']
-            and decoded.item_count(5740, after) - decoded.item_count(5740, before) == 1)
+            and reward_proxy_count(after) - reward_proxy_count(before) == 1)

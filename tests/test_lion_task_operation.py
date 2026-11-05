@@ -18,7 +18,8 @@ def data(current=66, status=1):
         familyContext=dict(selfUid=7, familyUid=8, season=126, staff=[dict(itemId=2014, posts=[dict(buildingItemId=286)])]),
         family=dict(tasks=[dict(task, uid=2000+i, slot=i+1, acceptor=None) for i in range(89)] + [task]),
         inventory=dict(records=[dict(uid=100, itemId=3875, count=1, extra=dict(r_id='1001', tk_c=f'3944_{current}', status=str(status))),
-            dict(uid=101, itemId=3956, count=19), dict(uid=102, itemId=3638, count=586)]),
+            dict(uid=101, itemId=3956, count=19), dict(uid=102, itemId=3638, count=586),
+            dict(uid=103, itemId=2739, count=1, extra=dict(it_rc='5740_338'))]),
         employees=dict(repeatEnabled=False))
 
 
@@ -27,7 +28,7 @@ def rewarded(before):
     after['inventory']['records'] = [r for r in after['inventory']['records'] if r['uid'] != 100]
     after['inventory']['records'][0]['count'] = 18
     after['inventory']['records'][1]['count'] = 668
-    after['inventory']['records'].append(dict(uid=103, itemId=5740, count=1))
+    after['inventory']['records'][2]['extra']['it_rc'] = '5740_339'
     return after
 
 
@@ -77,9 +78,19 @@ class LionTaskOperationTests(unittest.TestCase):
             if failure == 'personal':after['inventory']['records'].append(before['inventory']['records'][0])
             if failure == 'quota':after['inventory']['records'][0]['count'] = 19
             if failure == 'bell':after['inventory']['records'][1]['count'] += 1
-            if failure == 'extra':after['inventory']['records'].pop()
+            if failure == 'extra':after['inventory']['records'][2]['extra']['it_rc'] = '5740_338'
             if failure == 'account':after['familyContext']['selfUid'] += 1
             with self.subTest(failure=failure):self.assertFalse(lion.reward_confirmed(binding, before, after))
+
+    def test_hidden_reward_is_confirmed_in_its_real_counter_not_a_fabricated_bag_row(self):
+        before = data(204,2);after=rewarded(before)
+        self.assertFalse(any(r['itemId']==5740 for r in after['inventory']['records']))
+        self.assertTrue(lion.reward_confirmed(lion.bind(before), before, after))
+        for raw in ('5740_339#5740_339', '5740_bad', '5740_-1', ''):
+            bad=deepcopy(after);bad['inventory']['records'][2]['extra']['it_rc']=raw
+            with self.subTest(raw=raw), self.assertRaises(decoded.DecodeError):lion.reward_proxy_count(bad)
+        after['inventory']['records'].append(deepcopy(after['inventory']['records'][2]))
+        with self.assertRaises(decoded.DecodeError):lion.reward_proxy_count(after)
 
     def test_reward_intent_is_persisted_before_one_click_and_recovery_never_clicks(self):
         before = data(204, 2);after = rewarded(before);record = self.record(before)
@@ -100,6 +111,7 @@ class LionTaskOperationTests(unittest.TestCase):
             self.assertTrue(run.claim(record))
             new_ui.assert_not_called()
         self.assertTrue(record['reward_recovered'])
+        self.assertEqual(record['reward_after'], after)
 
     def test_uncertain_reward_remains_blocked_without_repeated_click(self):
         before = data(204, 2);record = self.record(before)
