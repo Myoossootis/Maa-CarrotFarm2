@@ -30,8 +30,11 @@ _selection = ContextVar('decoded_order_selection', default=None)
 # automation reads do not fail closed on the package string alone; its
 # production timing is not verified and is not claimed here.
 # Party/takeout capacity uses the same cfg contract on 90, 99 and 100
-# (100 checked live 2026-11-05). Package 98 stays out of capacity until that
-# contract is rechecked for it.
+# (100 checked live 2026-11-05). remaining is the client-effective count
+# already computed in Node: non-expired bag rows plus CD/day_limit ticks when
+# a refresh time is persisted, capped at the output limit. This module does
+# not recompute ticks. Package 98 stays out of capacity until that contract
+# is rechecked for it.
 VERIFIED_NORMAL_PACKAGES = frozenset({'90', '98', '99', '100'})
 VERIFIED_CAPACITY_PACKAGES = frozenset({'90', '99', '100'})
 
@@ -198,7 +201,8 @@ def order_capacity(kind, data=None):
     for row in entries:
         if (row.get('tokenItemId') != {'party': 103, 'takeout': 104}[row['category']]
                 or type(row.get('remaining')) is not int or not 0 <= row['remaining'] <= 2**53 - 1
-                or type(row.get('limit')) is not int or not 1 <= row['limit'] <= 6):
+                or type(row.get('limit')) is not int or not 1 <= row['limit'] <= 6
+                or row['remaining'] > row['limit']):
             raise DecodeError('Order capacity count or identity is invalid')
     return next(row for row in entries if row['category'] == kind)
 

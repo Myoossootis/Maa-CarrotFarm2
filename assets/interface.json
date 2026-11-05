@@ -5,7 +5,7 @@
     "license": "MIT",
     "welcome": "从「萝卜家园自动化」选择任务模板，设置参数后点击开始。普通订单3倍持续模板中0表示持续；暂停保留进程，继续接续本次运行，结束保留已保存计划。打开界面不会自动运行任务。游戏不要最小化；未知版本、规则未核对或结果不明会停止并显示原因。",
     "github": "https://github.com/Myoossootis/Maa-CarrotFarm2",
-    "version": "0.13.4",
+    "version": "0.13.5",
     "agent": {
         "child_exec": "python",
         "child_args": [
