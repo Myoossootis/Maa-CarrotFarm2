@@ -148,11 +148,15 @@ class Memory:
     def record(self, address):
         raw = self.cached(address, 16)
         uid, item, _, pointer = struct.unpack('<4I', raw)
-        if uid & 1 or item not in (3931 * 2, 3629 * 2) or not 1000 < uid >> 1 < 1073741824:
+        if uid & 1 or item not in (3931 * 2, 3629 * 2, 3921 * 2, 3972 * 2) or not 1000 < uid >> 1 < 1073741824:
             raise ValueError('Not a game record')
         extra = self.string(address & ~0xffffffff, pointer)
         if (item == 7862 and not re.search(r'(?:^|;)idx,\d+(?:;|$)', extra)) or (item == 7258 and 'plrd,' not in extra):
             raise ValueError('Unexpected extra structure')
+        if item == 7842 and not re.search(r'(?:^|;)season,\d+(?:;|$)', extra):
+            raise ValueError('Missing match season')
+        if item == 7944 and not all(re.search(r'(?:^|;)'+key+r',\d+(?:;|$)', extra) for key in ('r_id','r_c','exp')):
+            raise ValueError('Invalid contribution record')
         return dict(address=hex(address), uid=uid >> 1, itemId=item >> 1, extra=extra)
 
 
@@ -179,7 +183,7 @@ def run(request):
         if request['op'] == 'records':
             records = {}
             for base, data in memory.chunks():
-                for match in re.finditer(b'\xb6\x1e\0\0|\x5a\x1c\0\0', data):
+                for match in re.finditer(b'\xb6\x1e\0\0|\x5a\x1c\0\0|\xa2\x1e\0\0|\x08\x1f\0\0', data):
                     p = match.start()
                     if p < 4 or p + 12 > len(data):
                         continue

@@ -26,8 +26,16 @@ def review(snapshot, *, now=None):
         if not isinstance(staff, list) or any(not isinstance(s, dict) or type(s.get('itemId')) is not int for s in staff):
             raise ValueError('员工拥有列表未读取')
         result.update(selfUid=context['selfUid'], familyUid=context['familyUid'], season=context['season'])
-        result['blockers'].append('本期已完成次数及3956扣减语义未核对，不能启动26次自动循环')
-        result['blockers'].append('本页仅检查；实际入口仅执行一个本人已升级苹果收获UP，不接取／升级／换人')
+        counter=board.get('period')
+        current_time=datetime.now(timezone.utc).timestamp() if now is None else now
+        if (isinstance(counter,dict) and counter.get('source')=='shared_3921_and_3972'
+                and counter.get('selfUid')==context['selfUid'] and counter.get('season')==context['season']
+                and counter.get('status')==1 and type(counter.get('endsUnix')) is int and counter['endsUnix']>current_time
+                and type(counter.get('completed')) is int and 0<=counter['completed']<=26):
+            result['completed']=counter['completed']
+        else:
+            result['blockers'].append('本期贡献次数未读取；循环启动会进入贡献页核对，不由剩余次数推算')
+        result['blockers'].append('本页仅检查；实际执行入口为自动运行设置中的“狮王连续循环（收获UP）”')
         for task in tasks:
             acceptor, upgrader = task.get('acceptor'), task.get('upgrader')
             if acceptor is not None and (not isinstance(acceptor, dict) or type(acceptor.get('uid')) is not int or acceptor['uid'] <= 0):
@@ -63,7 +71,12 @@ def review(snapshot, *, now=None):
                 elif not row['staffOnDuty']:
                     row['blockers'].append('指定UP员工未在所需区域上阵；不能静默换人')
                 if kind == 'harvest':
-                    row['blockers'].append('实际入口按当前员工容量分批；其他作物和手动一键仍未启用')
+                    from tools.lion_task_operation import supports
+                    final=task.get('upgrade') or task
+                    if not supports(final):
+                        row['blockers'].append('该产物或最终奖励尚不支持自动执行；手动一键未启用')
+                else:
+                    row['blockers'].append('餐厅UP条件执行尚未启用')
             (result['ownTasks'] if own else result['candidates']).append(row)
         result['candidates'].sort(key=lambda r: (bool(r['blockers']), r['slot']))
         if result['ownTasks']:
@@ -79,8 +92,9 @@ def review(snapshot, *, now=None):
 
 
 def lines(result):
+    completed=result.get('completed')
     text = ['狮王检查（只读，不接取／升级／提交）',
-            f"每期目标26；已完成：未核对；期数：{result.get('season', '未确认')}",
+            f"每期目标26；已完成：{'未核对' if completed is None else completed}；期数：{result.get('season', '未确认')}",
             f"本人任务 {len(result['ownTasks'])}；待评估候选 {len(result['candidates'])}", result['next'], '']
     for row in result['ownTasks'] + result['candidates']:
         text.append(f"槽位{row['slot']}：{row['text']}")

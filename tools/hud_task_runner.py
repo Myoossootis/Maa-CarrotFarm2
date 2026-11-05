@@ -17,6 +17,7 @@ from tools.task_control import TaskCancelled, _check_stop
 from tools.ui_worker import workflow_lock
 
 SUPPORTED = {
+    'RunLionLoop': 'RunLionLoop',
     'RunLionAcquisition': 'RunLionAcquisition',
     'RunOwnLionUP': 'RunOwnLionUP',
     'RunDailyBatchOrders': 'RunDailyOrders', 'RunDailyPartyOrders': 'RunDailyOrders',
@@ -88,7 +89,7 @@ def check_business_version(request):
         return
     from tools import decoded_runtime as decoded
     data = decoded.snapshot()
-    if entry in ('RunLionAcquisition', 'RunOwnLionUP') and data.get('packageVersion') != '100':
+    if entry in ('RunLionLoop', 'RunLionAcquisition', 'RunOwnLionUP') and data.get('packageVersion') != '100':
         raise decoded.DecodeError('狮王业务仅核对客户端100，未发送游戏输入')
     if entry in ('RunDailyBatchOrders', 'RunDailyPartyOrders', 'RunDailyTakeoutOrders'):
         kinds = ('party', 'takeout') if entry == 'RunDailyBatchOrders' else (

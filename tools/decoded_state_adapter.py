@@ -125,6 +125,12 @@ def adapt_snapshot(snapshot: dict, batch_counts: dict[str, int], registry: dict 
                           'cached_state': 'busy' if busy else 'no_plan_in_cache' if worker_available else 'worker_unavailable',
                           'idle_verified_for_execution': False})
     family = snapshot.get('family')
+    lion_counter = None
+    if family is not None and snapshot.get('mode') == 'lion_counter':
+        if set(family) != {'period'}:
+            raise ValueError('counter-only report must not impersonate a task board')
+        lion_counter = family['period']
+        family = None
     if family is not None:
         tasks = family['tasks']
         if len(tasks) != 90 or {x['slot'] for x in tasks} != set(range(1, 91)):
@@ -140,4 +146,4 @@ def adapt_snapshot(snapshot: dict, batch_counts: dict[str, int], registry: dict 
             'execution_eligible': False, 'batch_counts_assumed': dict(batch_counts),
             'ui_batch_controls_verified': False,
             'inventory': {'items': items, 'unknown_slots': [x for x in issues if x['kind'] == 'unmapped_product']},
-            'orders': orders, 'employees': employees, 'family': family, 'mapping_issues': issues}
+            'orders': orders, 'employees': employees, 'family': family, 'lion_counter': lion_counter, 'mapping_issues': issues}

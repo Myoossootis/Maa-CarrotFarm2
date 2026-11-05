@@ -56,9 +56,11 @@ DEV_PAGE = ('dev', '诊断步骤')
 PAGE_TITLES = dict(PAGES + (DEV_PAGE,))
 SHELL_ENTRIES = frozenset({'OpenFarmHud', 'RuntimePreflight'})
 TEMPLATE_META = (
+    dict(entry='RunLionLoop', label='狮王连续循环（收获UP）', kind='狮王循环', loop='本期到26／本轮上限／次数耗尽停止',
+         detail='开发中：后台导航尚未通过实机验收，请勿无人值守长测。自动选取、升级／刷新、员工排产、收取和领奖后继续；费用按整个循环累计，恢复不重置。'),
     dict(entry='RunLionAcquisition', label='狮王选取／升级／刷新', kind='狮王任务', loop='选好一个UP后停止',
          detail='默认20礼券档，可选2／20。保留≥80铃铛且拥有员工的UP，跳过星级和他人预留；选取完成后返回农场，条件执行从本人UP入口接续。'),
-    dict(entry='RunOwnLionUP', label='本人已接苹果UP（一任务）', kind='狮王任务', loop='确认领奖并返回后停止',
+    dict(entry='RunOwnLionUP', label='本人已接收获UP（一任务）', kind='狮王任务', loop='确认领奖并返回后停止',
          detail='保持指定员工上阵，按当前容量分批排产和收取，回读本人任务进度后领奖；不接新任务。'),
     dict(entry='RunDailyBatchOrders', label='聚会与外卖（自动调度）', kind='订单调度', loop='各日 12 次',
          detail='先做还能做的批次。两类都冷却时才等待。'),
@@ -497,7 +499,7 @@ class FarmHud:
         self.root = root
         self.interface = interface or load_interface()
         self.templates = templates(self.interface)
-        self.template_index = next(i for i, item in enumerate(self.templates) if item['entry'] == 'RunLionAcquisition')
+        self.template_index = next(i for i, item in enumerate(self.templates) if item['entry'] == 'RunLionLoop')
         self.snapshot_path = snapshot_path
         self.snapshot = snapshot
         self.page = initial_page if initial_page in PAGE_TITLES else 'autorun'
@@ -1066,7 +1068,7 @@ class FarmHud:
         from tools.lion_workflow import review, lines
         card = self.tk.Frame(self.stage, bg=WHITE, highlightbackground=LINE, highlightthickness=1)
         card.pack(fill='both', expand=True)
-        self._card_title(card, '狮王任务检查', '自动运行设置：狮王选取／升级／刷新；条件执行从本人UP入口接续')
+        self._card_title(card, '狮王任务检查', '实际执行：自动运行设置 → 狮王连续循环（收获UP）')
         self.tk.Button(card, text='只读刷新狮王', command=self.refresh, bg=WHITE, fg=NAV,
                        relief='flat', font=(FONT, 10)).pack(anchor='w', padx=16, pady=(0, 8))
         self.tk.Label(card, text='请先在游戏中打开狮王任务板以载入完整90槽，再点只读刷新。检查不会执行任务。',

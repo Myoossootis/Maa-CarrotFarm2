@@ -44,6 +44,7 @@ class TaskDispatchTests(unittest.TestCase):
 
     def test_all_thirteen_templates_dispatch_to_original_workers_with_correct_mode(self):
         expected = {
+            'RunLionLoop': ('run_lion_loop.py', True),
             'RunLionAcquisition': ('run_lion_acquisition.py', True),
             'RunOwnLionUP': ('run_lion_task.py', True),
             'RunDailyBatchOrders': ('run_daily_orders.py', True),

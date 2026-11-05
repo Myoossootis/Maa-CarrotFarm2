@@ -1,4 +1,4 @@
-"""Execute exactly one existing apple-harvest UP, never accept or upgrade a task."""
+"""Execute one bound harvest UP through audited employee production and rewards."""
 import argparse
 from pathlib import Path
 import time
@@ -9,8 +9,14 @@ from tools.runtime_state import write_json
 from tools.task_control import check_cancelled
 
 
-def full_snapshot():
-    data = decoded._request_report('all')
+def full_snapshot(*,board=True):
+    data = decoded._request_report('all') if board else decoded.snapshot()
+    decoded.validate(data)
+    return data
+
+
+def counter_snapshot():
+    data=decoded._request_report('lion_counter')
     decoded.validate(data)
     return data
 
@@ -41,7 +47,8 @@ def read_capacities(binding, slots, folder):
 def wave_allocation(binding, data, capacities):
     state = lion.validate_task(binding, data, producing=True)
     missing = binding['target'] - state['current']
-    available = {s:c for s,c in capacities.items() if s in ('orchard_1', 'orchard_2')
+    product = binding['productName']
+    available = {s:c for s,c in capacities.items() if s in lion.production_slots(binding)
                  and type(c) is int and 0 < c <= 1000 and decoded.assignment_blocker(s, data) is None}
     counts = dict.fromkeys(available, 0)
     while missing and any(counts[s] < c for s,c in available.items()):
@@ -49,11 +56,11 @@ def wave_allocation(binding, data, capacities):
             if missing and counts[slot] < cap:
                 counts[slot] += 1
                 missing -= 1
-    jobs = [dict(slot_id=s, items={'苹果':n}, capacity_limit=available[s]) for s,n in counts.items() if n]
+    jobs = [dict(slot_id=s, items={product:n}, capacity_limit=available[s]) for s,n in counts.items() if n]
     if not jobs:
-        raise decoded.DecodeError('没有已核对空闲果园，保留在产及未知区域，不排产')
+        raise decoded.DecodeError('没有已核对空闲生产岗位，保留在产及未知区域，不排产')
     return dict(ready=True, jobs=jobs, bound_lion=binding, target_order=None, target_items=[],
-                production_targets=[dict(name='苹果', needed=sum(j['items']['苹果'] for j in jobs))],
+                production_targets=[dict(name=product, needed=sum(j['items'][product] for j in jobs))],
                 source_generated_at_utc=data['capturedAt'])
 
 
@@ -61,6 +68,9 @@ def execute(record, *, prepare_only=False):
     from tools.run_employee_order_plan import apply_jobs
     from tools.monitor_employee_products import monitor
     root = Path(record['folder']) / 'production'
+    binding = record['binding']
+    product = binding['productName']
+    slots = lion.production_slots(binding)
     if record['status'] == 'completed':
         print('[狮王] 这一绑定任务已确认领奖，本次不重复执行。', flush=True)
         return True
@@ -70,7 +80,7 @@ def execute(record, *, prepare_only=False):
         check_cancelled()
         data = decoded.snapshot()
         state = lion.validate_task(record['binding'], data)
-        print(f"[狮王] 槽位{record['binding']['slot']} 苹果 {state['current']}/{record['binding']['target']}，个人状态={state['status']}", flush=True)
+        print(f"[狮王] 槽位{binding['slot']} {product} {state['current']}/{binding['target']}，个人状态={state['status']}", flush=True)
         operation = employees.unfinished_active(root)
         if operation:
             if operation['allocation'].get('bound_lion') != record['binding']:
@@ -84,7 +94,11 @@ def execute(record, *, prepare_only=False):
             if old:
                 # Only a positively cleared saved record can be archived, never an intent.
                 employees.supersede_cleared_plans(old, data)
-            caps = read_capacities(record['binding'], ('orchard_1', 'orchard_2'), Path(record['folder']) / 'capacity')
+            if not any(decoded.assignment_blocker(slot, data) is None for slot in slots):
+                print('[狮王] 能生产目标产物的岗位仍忙，等待并保留原计划。', flush=True)
+                time.sleep(20)
+                continue
+            caps = read_capacities(binding, slots, Path(record['folder']) / 'capacity')
             operation = employees.begin(wave_allocation(record['binding'], decoded.snapshot(), caps), root=root)
             record['waves'].append(operation['assignment_id'])
             lion.save(record)
@@ -93,7 +107,7 @@ def execute(record, *, prepare_only=False):
             # previously saved slot. Never change a wave after a collection intent.
             jobs = operation['allocation']['jobs']
             pending = record['binding']['target'] - state['current'] - sum(sum(j['items'].values()) for j in jobs)
-            extras = [s for s in ('orchard_1', 'orchard_2') if s not in {j['slot_id'] for j in jobs}
+            extras = [s for s in slots if s not in {j['slot_id'] for j in jobs}
                       and decoded.assignment_blocker(s, data) is None]
             if pending > 0 and extras and not any(employees.collection_record(operation, j['slot_id']) for j in jobs):
                 caps = read_capacities(record['binding'], extras, Path(record['folder']) / 'capacity_extend')
@@ -103,7 +117,7 @@ def execute(record, *, prepare_only=False):
                 for slot in extras:
                     if decoded.assignment_blocker(slot, data) is None and caps.get(slot) and pending > 0:
                         count = min(pending, caps[slot])
-                        added.append(dict(slot_id=slot, items={'苹果': count}, capacity_limit=caps[slot]))
+                        added.append(dict(slot_id=slot, items={product: count}, capacity_limit=caps[slot]))
                         pending -= count
                 if added:
                     write_json(Path(operation['operation_dir']) / 'before_extend.json', operation)
@@ -151,11 +165,11 @@ def claim(record):
     ui = LionUI(Path(record['folder']) / 'reward_ui')
     try:
         ui.open_board()
-        before = full_snapshot()
+        ui.show_tasks()
+        ui.select_slot(binding['slot'])
+        before = full_snapshot(board=False)
         state = lion.validate_task(binding, before)
-        task = next((t for t in before['family']['tasks'] if t['uid'] == binding['slotUid']), None)
-        if (state['status'] != 2 or state['current'] < binding['target'] or not task
-                or task['taskItemId'] != binding['taskItemId'] or (task['acceptor'] or {}).get('uid') != binding['selfUid']):
+        if state['status'] != 2 or state['current'] < binding['target']:
             raise decoded.DecodeError('领奖前本人任务身份／FINISH状态未确认')
         frame = ui.frame('reward_ready')
         slot_label = ui.text((56, 879, 75, 44), frame)
@@ -174,7 +188,7 @@ def claim(record):
             if lion.reward_confirmed(binding, before, after):
                 record.update(status='reward_claimed', completed_tasks=1, reward_after=after)
                 lion.save(record)
-                print(f"[狮王] 本人任务已确认完成1次，铃铛+{binding['bellReward']}，次数道具-1；不接下一任务。", flush=True)
+                print(f"[狮王] 本人任务已确认完成1次，铃铛+{binding['bellReward']}，次数道具-1；继续核验返回农场。", flush=True)
                 break
             if time.monotonic() >= deadline:
                 raise decoded.DecodeError('狮王领奖未取得一致回读，不重发')
@@ -216,11 +230,13 @@ def main():
     parser.add_argument('--prepare-production-only', action='store_true')
     args = parser.parse_args()
     if not args.apply:
-        print('预览：仅一个本人已接苹果UP，员工分批生产并回读任务进度，不接新任务。')
+        print('预览：仅一个本人已接收获UP，限已核对产物与岗位；员工分批生产并回读任务进度，不接新任务。')
         return 0
     from tools.lion_task_ui import LionUI
     from tools.ui_worker import workflow_lock
     with workflow_lock():
+        from tools.lion_loop_operation import guard_independent
+        guard_independent()
         # Resolve a completed acquisition before consulting the older one-task
         # pointer. Old reward/production evidence is never deleted or replayed.
         data = full_snapshot() if employees.read(Path(__file__).resolve().parents[1] / '.tmp/lion_acquisition/active.json') else decoded.snapshot()

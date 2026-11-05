@@ -5,7 +5,7 @@
     "license": "MIT",
     "welcome": "从「萝卜家园自动化」选择任务模板，设置参数后点击开始。普通订单3倍持续模板中0表示持续；暂停保留进程，继续接续本次运行，结束保留已保存计划。打开界面不会自动运行任务。游戏不要最小化；未知版本、规则未核对或结果不明会停止并显示原因。",
     "github": "https://github.com/Myoossootis/Maa-CarrotFarm2",
-    "version": "0.16.0",
+    "version": "0.17.0",
     "agent": {
         "child_exec": "python",
         "child_args": [
@@ -36,8 +36,9 @@
         }
     ],
     "task": [
-        {"name": "狮王选取／升级／刷新", "entry": "RunLionAcquisition", "default_check": false, "description": "选定一个升级后≥80铃铛且拥有指定员工的UP；排除星级与他人占用／升级预留。无合格候选时接垃圾任务，按所选2／20礼券档刷新；高铃铛星级任务保留给家族，退出遵守120秒冷却。预算含升级，不用珍珠、不买次数。选好后停止并返回农场，条件执行另从本人UP入口接续；当前该执行入口仅支持苹果UP。", "option": ["狮王刷新档位", "狮王选取限额"]},
-        {"name": "本人已接苹果UP（一任务）", "entry": "RunOwnLionUP", "default_check": false, "description": "只执行一个本人已升级苹果收获UP：按实时员工容量排产、收取、回读进度并领奖返回；不接新任务、不购买。"},
+        {"name": "狮王连续循环（收获UP）", "entry": "RunLionLoop", "default_check": false, "description": "开发中：后台导航未通过实机验收，请勿无人值守长测。选取→升级／刷新→员工分批生产→收取→领奖→下一任务。仅接已有产物模板与岗位能力、指定员工已在农场上阵的收获UP；保留其他UP和他人预留。贡献页读取本期本人完成数，到26、指定本轮数量或次数耗尽停止；600礼券和20次刷新是整个循环总限额，恢复不重置。不买次数、不用珍珠、不加速。真实长期稳定性仍需自然生产测试。", "option": ["狮王刷新档位", "狮王选取限额", "狮王循环参数"]},
+        {"name": "狮王选取／升级／刷新", "entry": "RunLionAcquisition", "default_check": false, "description": "选定一个升级后≥80铃铛且拥有指定员工的UP；排除星级与他人占用／升级预留。无合格候选时接垃圾任务，按所选2／20礼券档刷新；高铃铛星级任务保留给家族，退出遵守120秒冷却。预算含升级，不用珍珠、不买次数。选好后停止并返回农场，条件执行另从本人UP入口接续；当前支持已有产物／岗位模板的收获UP；餐厅UP尚未接入。", "option": ["狮王刷新档位", "狮王选取限额"]},
+        {"name": "本人已接收获UP（一任务）", "entry": "RunOwnLionUP", "default_check": false, "description": "只执行一个本人已升级收获UP：仅现有产物模板与岗位能力，按实时员工容量排产、收取、回读进度并领奖返回；不接新任务、不购买。已有循环在途任务时从循环入口恢复。"},
         {
             "name": "操作台",
             "entry": "OpenFarmHud",
@@ -1549,8 +1550,8 @@
             "type": "checkbox",
             "default_case": ["20礼券"],
             "cases": [
-                {"name": "2礼券", "pipeline_override": {"RunLionAcquisition": {"attach": {"lion_refresh_2": true}}}},
-                {"name": "20礼券", "pipeline_override": {"RunLionAcquisition": {"attach": {"lion_refresh_20": true}}}}
+                {"name": "2礼券", "pipeline_override": {"RunLionAcquisition": {"attach": {"lion_refresh_2": true}}, "RunLionLoop": {"attach": {"lion_refresh_2": true}}}},
+                {"name": "20礼券", "pipeline_override": {"RunLionAcquisition": {"attach": {"lion_refresh_20": true}}, "RunLionLoop": {"attach": {"lion_refresh_20": true}}}}
             ]
         },
         "狮王选取限额": {
@@ -1559,7 +1560,15 @@
                 {"name": "refreshes", "label": "最多刷新次数（1–200，恢复不重置）", "default": "20", "pipeline_type": "int", "verify": "^(?:[1-9]|[1-9][0-9]|1[0-9]{2}|200)$"},
                 {"name": "budget", "label": "礼券总预算（2–10000，包含升级）", "default": "600", "pipeline_type": "int", "verify": "^(?:[2-9]|[1-9][0-9]{1,3}|10000)$"}
             ],
-            "pipeline_override": {"RunLionAcquisition": {"custom_action_param": {"max_refreshes": "{refreshes}", "budget": "{budget}"}}}
+            "pipeline_override": {"RunLionAcquisition": {"custom_action_param": {"max_refreshes": "{refreshes}", "budget": "{budget}"}}, "RunLionLoop": {"custom_action_param": {"max_refreshes": "{refreshes}", "budget": "{budget}"}}}
+        },
+        "狮王循环参数": {
+            "type": "input",
+            "inputs": [
+                {"name": "maximum", "label": "本循环最多完成任务数（1–26；本期到26仍会停止）", "default": "26", "pipeline_type": "int", "verify": "^(?:[1-9]|1[0-9]|2[0-6])$"},
+                {"name": "poll", "label": "无候选时检查间隔秒（10–3600）", "default": "60", "pipeline_type": "int", "verify": "^(?:[1-9][0-9]{1,2}|[12][0-9]{3}|3[0-5][0-9]{2}|3600)$"}
+            ],
+            "pipeline_override": {"RunLionLoop": {"custom_action_param": {"max_tasks": "{maximum}", "poll_seconds": "{poll}"}}}
         },
         "普通循环设置": {
             "type": "input",

@@ -88,3 +88,12 @@ class LionReadinessTests(unittest.TestCase):
         before = deepcopy(data)
         review(data, now=NOW)
         self.assertEqual(data, before)
+
+    def test_displays_direct_season_counter_but_keeps_this_page_read_only(self):
+        data=fixture()
+        data['family']['period']=dict(source='shared_3921_and_3972',selfUid=7,season=126,status=1,
+                                    endsUnix=int(NOW)+3600,completed=2,points=164)
+        result=review(data,now=NOW)
+        self.assertEqual(result['completed'],2)
+        self.assertIn('已完成：2',lines(result))
+        self.assertFalse(result['executionEnabled'])

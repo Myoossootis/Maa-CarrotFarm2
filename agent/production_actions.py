@@ -59,6 +59,20 @@ class RunLionAcquisition(CustomAction):
                                  '--budget', str(parameters['budget'])], is_stopping=stopping, script='run_lion_acquisition.py')
 
 
+class RunLionLoop(CustomAction):
+    def run(self, context, argv) -> bool:
+        stopping = lambda: context.tasker.stopping
+        parameters, node = action_values(context, argv)
+        tiers = [str(t) for t in (2,20) if node.get('attach',{}).get(f'lion_refresh_{t}') is True]
+        if not tiers:
+            raise ValueError('狮王刷新至少选择一档')
+        if stopping() or not wait_for_background_ready(is_stopping=stopping):
+            return False
+        return run_cycle_worker(['--apply','--tiers',*tiers,'--max-refreshes',str(parameters['max_refreshes']),
+            '--budget',str(parameters['budget']),'--max-tasks',str(parameters['max_tasks']),
+            '--poll-seconds',str(parameters['poll_seconds'])], is_stopping=stopping,script='run_lion_loop.py')
+
+
 class EnterRestaurant(CustomAction):
     def run(self, context, argv) -> bool:
         stopping = lambda: context.tasker.stopping

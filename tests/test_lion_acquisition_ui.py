@@ -1,5 +1,6 @@
 from pathlib import Path
 from unittest.mock import Mock, patch
+from types import SimpleNamespace
 import unittest
 import cv2
 import numpy as np
@@ -55,6 +56,37 @@ class LionUIReplayTests(unittest.TestCase):
         self.assertEqual(ui.text(vision.UPGRADE),'升级')
         self.assertEqual(ui.text(vision.REFRESH),'刷新任务')
 
+    def test_accept_preflight_checks_exact_condition_and_bells_before_badge_input(self):
+        ui=self.ui(image('unclaimed_detail',50,875))
+        self.assertEqual(ui.text(vision.DETAIL_TEXT),'收获96个甘蔗')
+        self.assertEqual(ui.text(vision.DETAIL_BELLS),'21')
+        ui.check_detail=Mock()
+        task=dict(slot=66,text='收获96个甘蔗',bellReward=dict(count=22),isUpgraded=False,upgrader=None)
+        with patch.object(vision,'post_click_normalized') as click, self.assertRaisesRegex(RuntimeError,'条件／铃铛'):
+            ui.check_accept(task)
+        click.assert_not_called()
+
+    def test_reservation_tooltip_cannot_be_overridden_by_an_old_base_cache(self):
+        ui=object.__new__(vision.LionUI);ui.check_detail=Mock();ui.controller=Mock();ui.frame=Mock()
+        task=dict(slot=66,text='收获96个甘蔗',bellReward=dict(count=21),isUpgraded=False,upgrader=None)
+        ui.text=Mock(side_effect=['收获96个甘蔗','21','接受','家族成员成员乙升级了任务'])
+        click=Mock();click.return_value.wait.return_value.succeeded=True
+        with patch.object(vision,'post_click_normalized',click),patch.object(vision.time,'sleep'):
+            with self.assertRaises(vision.ReservationConflict):ui.check_accept(task)
+        self.assertEqual(click.call_count,2)  # open and close tooltip, no acceptance
+
+    def test_contribution_numeric_identity_requires_all_three_values_in_one_row(self):
+        ui=object.__new__(vision.LionUI);ui.frame=Mock(return_value=np.zeros((1353,720,3),dtype=np.uint8))
+        hit=SimpleNamespace(box=(0,100,20,30))
+        result=SimpleNamespace(nodes=[SimpleNamespace(recognition=SimpleNamespace(filtered_results=[hit]))])
+        ui.tasker=Mock();ui.tasker.post_recognition.return_value.wait.return_value.get.return_value=result
+        ui.text=Mock(side_effect=['48','164'])
+        ui.verify_period_row(dict(completed=2,points=164,selfLevel=48,identityTripleUnique=True))
+        self.assertEqual(ui.text.call_count,2)
+        ui.text=Mock(side_effect=['48','165']);ui.board_visible=Mock(return_value=False)
+        with self.assertRaisesRegex(RuntimeError,'页面改变'):
+            ui.verify_period_row(dict(completed=2,points=164,selfLevel=48,identityTripleUnique=True))
+
     def test_real_maa_refresh_panel_accepts_voucher_icon_despite_static_pearl_copy(self):
         frame=image('refresh_panel',40,220);ui=self.ui(frame);ui.click_label=Mock()
         for cost in (2,20):
@@ -102,6 +134,51 @@ class LionUIReplayTests(unittest.TestCase):
         ui.text=Mock(return_value='刷新出新的任务');ui.board_visible=Mock(return_value=True)
         ui.recover_prepared(task)
         ui.click_label.assert_called_once_with('点击空白区域继续',(229,1202,228,40))
+
+    def test_period_read_waits_for_two_equal_counter_values_before_returning(self):
+        ui=object.__new__(vision.LionUI);ui.open_board=Mock();ui.click_label=Mock();ui.leave_board=Mock()
+        ui.verify_period_row=Mock();ui.show_tasks=Mock()
+        values=[{'family':{'period':dict(completed=n,season=126,selfUid=7,points=82*n)}} for n in (2,3,3,3)]
+        with patch.object(vision.time,'sleep'):
+            result=ui.read_period(Mock(side_effect=values))
+        self.assertEqual(result['family']['period']['completed'],3)
+        ui.show_tasks.assert_not_called()
+        ui.leave_board.assert_called_once_with()
+
+    def test_task_tab_retry_is_bounded_and_requires_a_live_detail_badge(self):
+        ui=object.__new__(vision.LionUI);ui.click_label=Mock();ui.task_board_visible=Mock(side_effect=[False,False,True])
+        ui.text=Mock(side_effect=['','84']);ui.show_tasks()
+        self.assertEqual(ui.click_label.call_count,2)
+        ui.click_label.reset_mock();ui.text=Mock(return_value='');ui.task_board_visible=Mock(return_value=False)
+        with self.assertRaisesRegex(RuntimeError,'页签切换'):ui.show_tasks()
+        self.assertEqual(ui.click_label.call_count,2)
+
+    def test_contribution_avatar_level_is_not_task_board_proof(self):
+        ui=object.__new__(vision.LionUI);ui.board_visible=Mock(return_value=True)
+        ui.text=Mock(return_value='完成任务')
+        self.assertFalse(ui.task_board_visible())
+        ui.text=Mock(return_value='可领取任务次数17/20')
+        self.assertTrue(ui.task_board_visible())
+
+    def test_failed_board_back_stops_before_family_or_farm_input(self):
+        ui=object.__new__(vision.LionUI);ui.board_visible=Mock(return_value=True);ui.back=Mock()
+        with self.assertRaisesRegex(RuntimeError,'任务板关闭'):ui.leave_board()
+        ui.back.assert_called_once_with()
+
+    def test_back_arrow_matches_dark_backdrop_and_animation_size_but_not_blank_area(self):
+        reference=cv2.imread(str(ROOT/'assets/resource/image/lion/back.png'))
+        for scale in (1,1.15):
+            with self.subTest(scale=scale):
+                sample=cv2.resize(reference,None,fx=scale,fy=scale)
+                background=np.max(np.abs(sample.astype(np.int16)-sample[0,0]),axis=2)<=25
+                sample[background]=[56,71,76]
+                frame=np.zeros((1353,720,3),dtype=np.uint8)
+                h,w=sample.shape[:2];frame[1230:1230+h,20:20+w]=sample
+                hit=vision.back_hit(frame)
+                self.assertIsNotNone(hit)
+                self.assertLess(abs(hit[0]-(20+w//2)),3)
+                self.assertLess(abs(hit[1]-(1230+h//2)),3)
+        self.assertIsNone(vision.back_hit(np.zeros((1353,720,3),dtype=np.uint8)))
 
 
 if __name__=='__main__':unittest.main()

@@ -11,6 +11,8 @@ from tools.task_control import check_cancelled
 def current_task(record, data, expected):
     acquisition.verify_identity(record, data)
     task = next((t for t in data['family']['tasks'] if t['uid'] == expected['uid']), None)
+    if record.get('managedSlotUid')==expected['uid']:
+        task=acquisition.bound_task(record,data) or task
     if not task or task['slot'] != expected['slot'] or task['taskItemId'] != expected['taskItemId']:
         raise decoded.DecodeError('选取期间槽位任务改变，未发出下一动作')
     return task
@@ -39,16 +41,21 @@ def quit_cooldown(data):
     started = ctx.get('quitStartedUnix')
     if cd != 120 or type(started) is not int or started < 0:
         raise decoded.DecodeError('退出冷却字段未知，不退出任务')
+    if started > time.time() + 5:
+        raise decoded.DecodeError('退出时间在未来，不能用异常时钟持续等待')
     return max(0, started + cd - time.time())
 
 
-def run(record, ui, *, read=full_snapshot):
+def run(record, ui, *, read=full_snapshot, supported_only=False):
     recover(record, read)
-    for _ in range(4*record['options']['max_refreshes'] + 185):
+    while True:
         check_cancelled()
         data = read()
         acquisition.verify_identity(record, data)
-        choice, task = acquisition.choose(data, skipped=record['skipped'])
+        task=acquisition.bound_task(record,data)
+        choice='own' if task is not None else None
+        if task is None:
+            choice, task = acquisition.choose(data, skipped=record['skipped'], supported_only=supported_only)
         if record['status'] == 'ready':
             if choice != 'own' or task['uid'] != record['readyTask']['uid'] or task['taskItemId'] != record['readyTask']['taskItemId']:
                 raise decoded.DecodeError('已选任务改变，旧回执不能授权新任务')
@@ -56,6 +63,8 @@ def run(record, ui, *, read=full_snapshot):
                 raise decoded.DecodeError('已选任务个人实例改变，不沿用旧回执')
             if not acquisition.suitability(task, data['familyContext'])[0] or task.get('canUpgrade'):
                 raise decoded.DecodeError('已选UP不再符合条件')
+            if supported_only and not acquisition.executable(task, data['familyContext']):
+                raise decoded.DecodeError('已选UP尚不支持自动执行，保留任务')
             return task
         if task is None:
             record.update(status='waiting', waitReason=choice)
@@ -71,17 +80,23 @@ def run(record, ui, *, read=full_snapshot):
         if choice != 'own':
             # Recheck the entire priority decision after navigation, including a
             # newly accepted own task or another member's just-upgraded reserve.
-            choice2, picked = acquisition.choose(before, skipped=record['skipped'])
+            choice2, picked = acquisition.choose(before, skipped=record['skipped'], supported_only=supported_only)
             if choice2 != choice or picked != task:
                 raise decoded.DecodeError('接取前候选或占用改变，未点击接受')
             if good and task.get('canUpgrade'):
                 acquisition.cost_allowed(record, (task.get('upgradeCost') or {}).get('count'), before)
             if not good:
                 acquisition.refresh_tier(record, before)  # Do not take garbage without a funded refresh.
-            ui.check_accept(task)
+            from tools.lion_task_ui import ReservationConflict
+            try:
+                ui.check_accept(task)
+            except ReservationConflict:
+                record['skipped'].append(task['slot'])
+                acquisition.save(record)
+                continue
             # The OCR precheck can take time; ownership must still be fresh.
             before = read()
-            latest_choice, latest = acquisition.choose(before, skipped=record['skipped'])
+            latest_choice, latest = acquisition.choose(before, skipped=record['skipped'], supported_only=supported_only)
             acquisition.verify_identity(record, before)
             if latest_choice != choice or latest != task:
                 raise decoded.DecodeError('接受按钮核对后任务已改变，未点击')
@@ -97,12 +112,15 @@ def run(record, ui, *, read=full_snapshot):
             raise decoded.DecodeError('动作前本人占用改变')
         acquisition.personal(task, before)
         good, reason = acquisition.suitability(task, ctx)
-        if good and not task.get('canUpgrade'):
+        unsupported = supported_only and good and not acquisition.executable(task, ctx)
+        if unsupported and record['managedSlotUid'] != task['uid']:
+            raise decoded.DecodeError('本人任务产物或指定员工上阵条件尚不支持自动执行，保留任务')
+        if good and not unsupported and not task.get('canUpgrade'):
             record.update(status='ready', readyTask=task, readyPersonalUid=acquisition.personal(task, before)['uid'])
             acquisition.save(record)
             print(f"[狮王] 已选定UP：槽位{task['slot']}，{task['bellReward']['count']}铃铛；选取阶段完成，任务尚未完成。", flush=True)
             return task
-        if good:
+        if good and not unsupported:
             cost = (task.get('upgradeCost') or {}).get('count')
             acquisition.cost_allowed(record, cost, before)
             ui.prepare_upgrade(task, cost)
@@ -120,7 +138,7 @@ def run(record, ui, *, read=full_snapshot):
         kind = (task.get('requirement') or {}).get('kind')
         if kind not in acquisition.KNOWN_KINDS:
             raise decoded.DecodeError('刷新结果类型未知，保留任务')
-        if kind == 'star_orders' and task['bellReward']['count'] >= 45:
+        if unsupported or kind == 'star_orders' and task['bellReward']['count'] >= 45:
             # Preserve a valuable star task even if the game's daily warning
             # has already been disabled. If visible, explicitly cancel it.
             ui.cancel_star_warning(task)
@@ -153,7 +171,6 @@ def run(record, ui, *, read=full_snapshot):
         acquisition.intent(record, 'refresh', task, before, cost)
         ui.refresh(cost)
         wait_confirmation(record, read)
-    raise decoded.DecodeError('选取步骤达到有限上限，保留任务与预算记录')
 
 
 def main():
@@ -173,6 +190,8 @@ def main():
     from tools.ui_worker import workflow_lock
     from tools import employee_operation as employees, lion_task_operation as lion
     with workflow_lock():
+        from tools.lion_loop_operation import guard_independent
+        guard_independent()
         initial = decoded.snapshot()
         decoded.validate(initial)
         if initial.get('packageVersion') != '100':

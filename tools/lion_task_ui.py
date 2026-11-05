@@ -1,7 +1,9 @@
 """Bounded Lion King navigation through the existing Maa safe-input helpers."""
 from pathlib import Path
 import time
+import re
 import cv2
+import numpy as np
 from maa.pipeline import JOCR, JRecognitionType
 from maa.controller import Win32Controller
 from maa.define import MaaWin32InputMethodEnum, MaaWin32ScreencapMethodEnum
@@ -18,15 +20,43 @@ ACCEPT = (245, 1025, 235, 65)
 UPGRADE = (142, 1025, 162, 42)
 REFRESH = (413, 1025, 162, 58)
 DETAIL_SLOT = (56, 879, 75, 44)
+DETAIL_TEXT = (182, 901, 421, 80)
+DETAIL_BELLS = (403, 975, 104, 36)
+RESERVATION_HINT = (48, 710, 610, 232)
 HINT = (82, 470, 562, 151)
 CANCEL = (100, 672, 180, 55)
 CONFIRM = (435, 672, 180, 55)
 REFRESH_TITLE = (132, 244, 473, 65)
+TASK_TAB = (86, 1134, 90, 50)
+SCORE_TAB = (324, 1134, 91, 50)
 
 
 def high_bell_warning(text, bells):
     return (f'当前任务铃铛为{bells}' in text and '高铃铛任务' in text
             and '更换或刷新' in text)
+
+
+class ReservationConflict(RuntimeError):
+    """Positive reservation evidence; caller may skip this slot without taking it."""
+
+
+def back_hit(frame):
+    reference=cv2.imread(str(Path(__file__).resolve().parents[1]/'assets/resource/image/lion/back.png'))
+    area=frame[1220:1345,0:112]
+    if reference is None or min(area.shape[:2])<max(reference.shape[:2]):
+        return None
+    # The same arrow is drawn over family beige or a dark popup backdrop.
+    # Match its foreground, excluding the original flat beige background.
+    mask=(np.max(np.abs(reference.astype(np.int16)-reference[0,0]),axis=2)>25).astype(np.uint8)*255
+    hits=[]
+    for scale in (.9,.95,1,1.05,1.1,1.15,1.2):
+        sample=cv2.resize(reference,None,fx=scale,fy=scale)
+        foreground=cv2.resize(mask,(sample.shape[1],sample.shape[0]),interpolation=cv2.INTER_NEAREST)
+        _,score,_,point=cv2.minMaxLoc(cv2.matchTemplate(area,sample,cv2.TM_CCORR_NORMED,mask=foreground))
+        if np.isfinite(score):
+            hits.append((score,point[0]+sample.shape[1]//2,1220+point[1]+sample.shape[0]//2))
+    best=max(hits,default=(0,0,0))
+    return best[1:] if best[0]>=.97 else None
 
 
 class LionUI:
@@ -59,7 +89,8 @@ class LionUI:
         if actual != expected:
             raise RuntimeError(f'狮王页面未确认：需要{expected!r}，读到{actual!r}；未点击')
         x, y, width, height = roi
-        if not post_click_normalized(self.controller, x + width // 2, y + height // 2).wait().succeeded:
+        point = (x + width // 2, y + height // 2)
+        if not post_click_normalized(self.controller, *point).wait().succeeded:
             raise RuntimeError('狮王点击结果不明，禁止重发')
         time.sleep(.7)
         self.frame('after_click')
@@ -123,8 +154,31 @@ class LionUI:
 
     def check_accept(self, task):
         self.check_detail(task['slot'])
-        if self.text(ACCEPT) != '接受':
+        frame = self.frame('accept_identity')
+        compact = lambda value: re.sub(r'[\s，,。；;：:、]', '', value)
+        if (not task.get('text') or compact(self.text(DETAIL_TEXT, frame)) != compact(task['text'])
+                or self.text(DETAIL_BELLS, frame) != str(task['bellReward']['count'])):
+            raise RuntimeError('接受前任务条件／铃铛与当前候选不一致，未接取')
+        if self.text(ACCEPT, frame) != '接受':
             raise RuntimeError('接受按钮未确认，未记录支付／接取意图')
+        # Clicking the slot badge only toggles the game's reservation tooltip.
+        # A stale base cache must not authorize taking another member's upgrade.
+        x,y,w,h = DETAIL_SLOT
+        if not post_click_normalized(self.controller, x+w//2, y+h//2).wait().succeeded:
+            raise RuntimeError('升级人提示点击结果不明，未接取')
+        time.sleep(.4)
+        hint = self.text(RESERVATION_HINT)
+        match = re.search(r'家族成员(.+?)升级了任务', re.sub(r'\s+', '', hint))
+        upgrader = task.get('upgrader')
+        if match:
+            if not post_click_normalized(self.controller, x+w//2, y+h//2).wait().succeeded:
+                raise RuntimeError('升级人提示关闭结果不明，未接取')
+            time.sleep(.4)
+            if not upgrader or not upgrader.get('name') or match[1] != upgrader['name']:
+                raise ReservationConflict('当前任务出现他人或未知升级人预留，未接取')
+        elif task.get('isUpgraded') or upgrader:
+            raise RuntimeError('已升级候选缺少本人升级提示证明，未接取')
+        self.check_detail(task['slot'])
 
     def check_upgrade_hint(self, task, cost):
         text = self.text(HINT)
@@ -211,6 +265,9 @@ class LionUI:
     def board_visible(self):
         return self.text((235, 205, 260, 75)) == '狮王争霸'
 
+    def task_board_visible(self):
+        return self.board_visible() and re.search(r'\d+/\d+',self.text((82,823,535,49))) is not None
+
     def recover_prepared(self, task):
         """Cancel a recognized, unpaid dialog; never confirm payment on restart."""
         if task is None:
@@ -248,18 +305,107 @@ class LionUI:
         if not self.board_visible():
             raise RuntimeError('狮王任务板打开未确认，不重发导航')
 
+    def read_period(self, read):
+        from tools.decoded_runtime import DecodeError
+        self.open_board()
+        self.click_label('贡献', SCORE_TAB)
+        previous = None
+        second = None
+        for _ in range(4):
+            try:
+                candidate = read()
+            except DecodeError:
+                previous = None
+                time.sleep(.5)
+                continue
+            value = candidate['family'].get('period')
+            if value is not None and value == previous:
+                second = candidate
+                break
+            previous = value
+            time.sleep(.5)
+        if second is None:
+            raise RuntimeError('当前赛季本人贡献次数未取得两次一致读取')
+        self.verify_period_row(second['family']['period'])
+        self.leave_board()
+        after = read()
+        if after['family'].get('period') != second['family']['period']:
+            raise RuntimeError('返回农场后本人赛季计数改变，重新对账后再执行')
+        after['lionCounterUi']={k:after['family']['period'][k] for k in ('season','selfUid','completed','points')}
+        return after
+
+    def show_tasks(self):
+        if self.task_board_visible():
+            return
+        for _ in range(2):
+            self.click_label('任务', TASK_TAB)
+            badge=self.text(DETAIL_SLOT)
+            if self.task_board_visible() and badge.isdecimal() and 1<=int(badge)<=90:
+                return
+        raise RuntimeError('任务页签切换未取得详情槽位证明，不继续导航')
+
+    def verify_period_row(self, counter):
+        name=counter.get('selfName')
+        numeric=counter.get('identityTripleUnique') is True and type(counter.get('selfLevel')) is int
+        if not numeric and (not name or counter.get('selfNameUnique') is not True):
+            raise RuntimeError('本人贡献昵称缺失或不唯一，不能猜测列表行')
+        for _ in range(40):
+            frame=self.frame('own_contribution_row')
+            if numeric:
+                patch=cv2.resize(frame[350:1100,420:478],None,fx=2,fy=2,interpolation=cv2.INTER_CUBIC)
+                detail=self.tasker.post_recognition(JRecognitionType.OCR,JOCR(roi=(0,0,patch.shape[1],patch.shape[0]),
+                    expected=['^'+str(counter['completed'])+'$'],threshold=.8),patch).wait().get()
+                recognition=detail.nodes[0].recognition if detail and detail.nodes else None
+                matches=[]
+                for hit in recognition.filtered_results if recognition else []:
+                    _,y,_,height=map(int,hit.box);center=350+(y+height//2)//2
+                    level=self.text((90,center-78,40,38),frame)
+                    points=self.text((551,center-17,75,34),frame)
+                    if level==str(counter['selfLevel']) and points==str(counter['points']):matches.append(center)
+                if len(matches)==1:return
+                if len(matches)>1:raise RuntimeError('当前可见贡献行身份组合重复，不能猜测本人')
+                if not self.board_visible():raise RuntimeError('贡献页面改变，不继续滚动')
+                if not post_swipe_normalized(self.controller,530,980,530,500,700).wait().succeeded:
+                    raise RuntimeError('贡献列表滚动结果不明')
+                time.sleep(1)
+                continue
+            strip=cv2.resize(frame[350:1100,170:380],None,fx=2,fy=2,interpolation=cv2.INTER_CUBIC)
+            detail=self.tasker.post_recognition(JRecognitionType.OCR,JOCR(
+                roi=(0,0,strip.shape[1],strip.shape[0]),expected=['^'+re.escape(name)+'$'],threshold=.6),strip).wait().get()
+            recognition=detail.nodes[0].recognition if detail and detail.nodes else None
+            hits=list(recognition.filtered_results) if recognition else []
+            if len(hits)==1:
+                _,y,_,height=map(int,hits[0].box)
+                center=350+(y+height//2)//2
+                count=self.text((420,center,58,35),frame)
+                points=self.text((551,center,75,35),frame)
+                if count!=str(counter['completed']) or points!=str(counter['points']):
+                    raise RuntimeError(f'本人贡献行次数／积分与当前解码不一致：{count}/{points}')
+                return
+            if len(hits)>1 or not self.board_visible():
+                raise RuntimeError('本人贡献行不唯一或页面改变，未继续滚动')
+            if not post_swipe_normalized(self.controller,530,980,530,500,700).wait().succeeded:
+                raise RuntimeError('贡献列表滚动结果不明')
+            time.sleep(1)
+        raise RuntimeError('有限滚动内未识别本人贡献行，不能按旧计数继续')
+
+    def back(self):
+        frame=self.frame('back_button')
+        point=back_hit(frame)
+        if point is None:
+            raise RuntimeError('家族返回按钮未确认')
+        if not post_click_normalized(self.controller,*point).wait().succeeded:
+            raise RuntimeError('家族返回结果不明')
+        time.sleep(.7)
+
     def leave_board(self):
         if self.board_visible():
-            self.click_label('点击空白区域继续', (229, 1202, 228, 40))
+            self.back()
+        if self.board_visible():
+            raise RuntimeError('任务板关闭未确认，不继续点击其他页面')
         frame = self.frame()
         if self.text((309, 199, 101, 43), frame) == '功能':
-            reference = cv2.imread(str(Path(__file__).resolve().parents[1] / 'assets/resource/image/lion/back.png'))
-            patch = frame[1245:1325, 12:88]
-            if reference is None or patch.shape != reference.shape or cv2.matchTemplate(patch, reference, cv2.TM_CCOEFF_NORMED).max() < .93:
-                raise RuntimeError('家族返回按钮未确认')
-            if not post_click_normalized(self.controller, 45, 1285).wait().succeeded:
-                raise RuntimeError('家族返回结果不明')
-            time.sleep(.5)
+            self.back()
         if phone_menu_visible(self.frame()):
             self.click_label('点击空白区域继续', (229, 1202, 228, 40))
         from tools.enter_farm import enter_farm
